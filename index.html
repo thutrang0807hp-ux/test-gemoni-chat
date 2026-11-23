@@ -85,6 +85,12 @@ const download = get("download");
 const status = get("status");
 const retry = get("retry");
 const copy = get("copy");
+const pagesMode = window.location.hostname.endsWith(".github.io");
+if (pagesMode) {
+  get("connection").hidden = true;
+  get("generate").hidden = true;
+  retry.hidden = true;
+}
 let busy = false;
 let imageUrl;
 
@@ -132,7 +138,7 @@ function importImage(file) {
 }
 
 async function run(refine) {
-  if (busy) return;
+  if (busy || pagesMode) return;
   if (!key.value.trim()) {
     get("connection").open = true;
     key.focus();
