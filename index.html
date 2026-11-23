@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gemini Studio</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui,sans-serif;background:#12131b;color:#f4f2fc;--muted:#bbb9ce;--border:#37364a;--accent:#c3b1ff}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at 88% 0%,#2a2146,transparent 62%);min-height:100vh}
+main{width:min(1110px,100% - 32px);margin:auto;padding:46px 0}
+h1{font-size:clamp(2.2rem,6vw,4rem);margin:0;letter-spacing:-.065em}
+h2{margin:0 0 20px;font-size:1.25rem}
+p{color:var(--muted);line-height:1.55}a{color:var(--accent)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:26px}
+.panel{background:#1c1d29;border:1px solid var(--border);border-radius:20px;padding:22px;min-width:0}
+label,summary{display:block;font-weight:650;margin:0 0 8px}
+summary{display:list-item;cursor:pointer}
+details{margin-bottom:22px;border-bottom:1px solid var(--border);padding-bottom:12px}
+details p{margin:7px 0;font-size:.9rem}
+input,textarea,select{width:100%;border:1px solid var(--border);border-radius:10px;background:#151622;color:inherit;font:inherit;padding:11px}
+textarea{min-height:132px;resize:vertical;line-height:1.5}
+#revised{min-height:120px}
+button,.download{background:#29283b;color:inherit;border:1px solid #49465f;border-radius:10px;padding:10px 13px;font:inherit;font-weight:650;cursor:pointer;text-decoration:none;text-align:center}
+button:disabled{opacity:.5;cursor:default}
+.primary{background:var(--accent);color:#201438;border-color:transparent;flex:1}
+.row{display:flex;align-items:end;gap:12px;margin-top:14px;flex-wrap:wrap}
+.row label{margin:0}
+.preview{display:grid;place-items:center;min-height:310px;border:1px dashed var(--border);border-radius:14px;overflow:hidden;margin-bottom:22px;background:radial-gradient(ellipse at center,#302848,#191925)}
+.preview p{text-align:center;padding:16px}
+.preview img{display:block;width:100%;max-height:560px;object-fit:contain}
+#status{min-height:1.55em;margin-bottom:0}
+#status[data-error=true]{color:#ffb1b6}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+[hidden]{display:none!important}
+@media(max-width:750px){.grid{grid-template-columns:1fr}main{padding:28px 0}.preview{min-height:230px}}
+</style>
+<main>
+<header><h1>Gemini Studio</h1><p>Viết ý tưởng, nhận prompt Gemini đã chỉnh và ảnh tạo từ prompt đó.</p></header>
+<div class="grid">
+<section class="panel" aria-labelledby="input-title">
+<h2 id="input-title">Ý tưởng của bạn</h2>
+<details open id="connection">
+<summary>Kết nối Gemini</summary>
+<label for="key">Gemini API key</label>
+<input id="key" type="password" placeholder="Dán API key" autocomplete="off" spellcheck="false" required form="create">
+<p>Khóa chỉ dùng trong phiên này. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Lấy khóa ở Google AI Studio</a></p>
+</details>
+<form id="create">
+<label for="prompt">Prompt gốc</label>
+<textarea id="prompt" required maxlength="12000" placeholder="Ví dụ: Một quán cà phê nhỏ bên đường ở Đà Lạt, trời mưa, ánh đèn vàng ấm."></textarea>
+<div class="row">
+<label for="ratio">Tỷ lệ ảnh<select id="ratio"><option>1:1</option><option>16:9</option><option>9:16</option><option>4:3</option><option>3:4</option></select></label>
+<button class="primary" id="generate">Chỉnh prompt và tạo ảnh</button>
+</div>
+</form>
+<p id="status" role="status"></p>
+</section>
+<section class="panel" aria-labelledby="output-title">
+<h2 id="output-title">Kết quả</h2>
+<div class="preview"><p id="placeholder">Ảnh của bạn sẽ hiện ở đây.</p><img hidden id="result" alt="Ảnh do Gemini tạo"></div>
+<label for="revised">Prompt Gemini đã chỉnh</label>
+<textarea id="revised" maxlength="12000" placeholder="Bạn có thể chỉnh lại prompt trước khi tạo ảnh mới."></textarea>
+<div class="row">
+<button id="copy" disabled>Sao chép</button>
+<button id="retry" disabled>Tạo lại ảnh</button>
+<a id="download" class="download" hidden>Tải ảnh</a>
+</div>
+</section>
+</div>
+</main>
+<script>
+const get = (id) => document.getElementById(id);
+const form = get("create");
+const key = get("key");
+const promptInput = get("prompt");
+const ratio = get("ratio");
+const revised = get("revised");
+const image = get("result");
+const download = get("download");
+const status = get("status");
+const retry = get("retry");
+const copy = get("copy");
+let busy = false;
+let imageUrl;
+
+function setStatus(message, error = false) {
+  status.textContent = message;
+  status.dataset.error = error;
+}
+
+function updateButtons() {
+  get("generate").disabled = busy;
+  retry.disabled = busy || !revised.value.trim();
+  copy.disabled = !revised.value.trim();
+}
+
+async function request(action, prompt, options) {
+  const response = await fetch("/api/" + action, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({...options, prompt})
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Có lỗi khi gọi Gemini.");
+  return result;
+}
+
+async function run(refine) {
+  if (busy) return;
+  if (!key.value.trim()) {
+    get("connection").open = true;
+    key.focus();
+    setStatus("Hãy nhập Gemini API key.", true);
+    return;
+  }
+  const options = {key: key.value.trim(), ratio: ratio.value};
+  let prompt = (refine ? promptInput : revised).value.trim();
+  if (!prompt) {
+    setStatus("Hãy nhập prompt.", true);
+    return;
+  }
+  busy = true;
+  revised.readOnly = true;
+  updateButtons();
+  try {
+    if (refine) {
+      setStatus("Gemini đang chỉnh prompt…");
+      ({prompt} = await request("refine", prompt, options));
+      revised.value = prompt;
+    }
+    setStatus(refine ? "Gemini đang tạo ảnh…" : "Gemini đang tạo lại ảnh…");
+    const result = await request("image", prompt, options);
+    const bytes = Uint8Array.from(atob(result.image), char => char.charCodeAt(0));
+    if (imageUrl) URL.revokeObjectURL(imageUrl);
+    imageUrl = URL.createObjectURL(new Blob([bytes], {type: result.mime}));
+    image.src = imageUrl;
+    image.hidden = false;
+    get("placeholder").hidden = true;
+    download.href = imageUrl;
+    download.download = "gemini-anh." + result.mime.split("/")[1];
+    download.hidden = false;
+    setStatus(refine ? "Đã tạo ảnh." : "Đã tạo ảnh mới.");
+  } catch (error) {
+    setStatus(error.message || "Không thể kết nối. Hãy thử lại.", true);
+  } finally {
+    busy = false;
+    revised.readOnly = false;
+    updateButtons();
+  }
+}
+
+key.addEventListener("invalid", () => { get("connection").open = true; });
+form.addEventListener("submit", event => { event.preventDefault(); run(true); });
+revised.addEventListener("input", updateButtons);
+retry.addEventListener("click", () => run(false));
+copy.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(revised.value);
+    if (!busy) setStatus("Đã sao chép prompt.");
+  } catch {
+    revised.select();
+    if (!busy) setStatus("Nhấn Ctrl+C hoặc ⌘C để sao chép.");
+  }
+});
+</script>
+</html>
