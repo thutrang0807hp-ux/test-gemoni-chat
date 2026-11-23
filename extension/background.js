@@ -3,11 +3,11 @@ import { generateInGemini } from "./gemini.js";
 const studio = "https://thutrang0807hp-ux.github.io/test-gemoni-chat/";
 let busy = false;
 
-chrome.runtime.onMessageExternal.addListener((message, sender, respond) => {
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const source = new URL(sender.url || "about:blank");
-  if (source.origin + source.pathname !== studio || sender.frameId !== 0) return;
+  if (source.origin + source.pathname !== studio || (sender.frameId ?? 0) !== 0) return;
   if (message?.type === "studio-ping") {
-    respond({ok: true});
+    respond({ok: true, version: chrome.runtime.getManifest().version});
     return;
   }
   if (message?.type !== "studio-generate") return;

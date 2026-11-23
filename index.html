@@ -43,9 +43,9 @@ button:disabled{opacity:.5;cursor:default}
 <h2 id="input-title">Ý tưởng của bạn</h2>
 <details id="extension-setup" hidden>
 <summary>Kết nối extension Chrome</summary>
-<label for="extension-id">ID extension</label>
-<input id="extension-id" spellcheck="false" autocomplete="off" placeholder="Dán ID từ chrome://extensions">
-<p><a href="https://github.com/thutrang0807hp-ux/test-gemoni-chat#kết-nối-extension-chrome" target="_blank" rel="noopener noreferrer">Cài Gemini Studio Bridge</a></p>
+<p id="extension-status" role="status">Đang kiểm tra extension…</p>
+<button type="button" id="extension-check">Kiểm tra lại</button>
+<p><a href="https://github.com/thutrang0807hp-ux/test-gemoni-chat#kết-nối-extension-chrome" target="_blank" rel="noopener noreferrer">Cài hoặc cập nhật Gemini Studio Bridge</a></p>
 </details>
 <details id="connection">
 <summary>Kết nối Gemini API (tùy chọn)</summary>
@@ -98,11 +98,6 @@ if (pagesMode) {
   get("extension-setup").open = true;
   key.required = false;
   get("generate").textContent = "Gửi";
-  const extension = get("extension-id");
-  try { extension.value = localStorage.getItem("geminiStudioExtension") || ""; } catch {}
-  extension.addEventListener("change", () => {
-    try { localStorage.setItem("geminiStudioExtension", extension.value.trim()); } catch {}
-  });
   get("chat-fallback").hidden = true;
   get("chat-hint").hidden = true;
 }
@@ -152,31 +147,45 @@ function importImage(file) {
   setStatus("Đã thêm ảnh từ máy.");
 }
 
-function sendToExtension(id, message) {
+function sendToExtension(message) {
   return new Promise((resolve, reject) => {
-    if (!globalThis.chrome?.runtime?.sendMessage) {
-      reject(new Error("Hãy mở Studio bằng Chrome và cài extension Gemini Studio Bridge."));
-      return;
+    const id = crypto.randomUUID();
+    const timeout = setTimeout(() => {
+      window.removeEventListener("message", receive);
+      reject(new Error(message.type === "studio-ping"
+        ? "Chưa thấy extension. Hãy cài bản mới và tải lại trang."
+        : "Gemini xử lý quá lâu. Hãy thử lại."));
+    }, message.type === "studio-ping" ? 3000 : 280000);
+
+    function receive(event) {
+      if (event.source !== window || event.origin !== window.location.origin ||
+          event.data?.bridge !== "gemini-studio-response" || event.data.id !== id) return;
+      clearTimeout(timeout);
+      window.removeEventListener("message", receive);
+      resolve(event.data.result);
     }
-    chrome.runtime.sendMessage(id, message, result => {
-      if (chrome.runtime.lastError || !result) {
-        reject(new Error("Không kết nối được extension. Hãy kiểm tra ID và tải lại Studio sau khi cài."));
-        return;
-      }
-      resolve(result);
-    });
+
+    window.addEventListener("message", receive);
+    window.postMessage({bridge: "gemini-studio-request", id, message}, window.location.origin);
   });
+}
+
+async function checkExtension() {
+  const connection = get("extension-status");
+  connection.textContent = "Đang kiểm tra extension…";
+  try {
+    const result = await sendToExtension({type: "studio-ping"});
+    if (!result?.ok) throw new Error(result?.error || "Không kết nối được extension.");
+    connection.textContent = "Đã kết nối Gemini Studio Bridge " + result.version + ".";
+    return true;
+  } catch (error) {
+    connection.textContent = error.message;
+    return false;
+  }
 }
 
 async function run(refine) {
   if (busy) return;
-  const extensionId = pagesMode ? get("extension-id").value.trim() : "";
-  if (pagesMode && !/^[a-p]{32}$/.test(extensionId)) {
-    get("extension-setup").open = true;
-    get("extension-id").focus();
-    setStatus("Hãy nhập ID extension từ chrome://extensions.", true);
-    return;
-  }
   if (!pagesMode && !key.value.trim()) {
     get("connection").open = true;
     key.focus();
@@ -195,12 +204,17 @@ async function run(refine) {
   try {
     let result;
     if (pagesMode) {
+      if (!(await checkExtension())) {
+        get("extension-setup").open = true;
+        setStatus("Hãy kết nối extension trước khi gửi prompt.", true);
+        return;
+      }
       setStatus(refine ? "Gemini đang chỉnh prompt và tạo ảnh…" : "Gemini đang tạo lại ảnh…");
       const keepAlive = setInterval(() => {
-        sendToExtension(extensionId, {type: "studio-ping"}).catch(() => {});
+        sendToExtension({type: "studio-ping"}).catch(() => {});
       }, 15000);
       try {
-        result = await sendToExtension(extensionId, {
+        result = await sendToExtension({
           type: "studio-generate", prompt, ratio: options.ratio, refine
         });
       } finally {
@@ -266,6 +280,11 @@ get("image-file").addEventListener("change", event => {
   importImage(event.target.files[0]);
   event.target.value = "";
 });
+
+if (pagesMode) {
+  get("extension-check").addEventListener("click", checkExtension);
+  checkExtension();
+}
 
 key.addEventListener("invalid", () => { get("connection").open = true; });
 form.addEventListener("submit", event => { event.preventDefault(); run(true); });

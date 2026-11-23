@@ -2,12 +2,28 @@
   "manifest_version": 3,
   "name": "Gemini Studio Bridge",
   "description": "Gửi prompt từ Gemini Studio và trả kết quả từ tab Gemini Chat.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minimum_chrome_version": "120",
-  "permissions": ["scripting"],
-  "host_permissions": ["https://gemini.google.com/*", "https://*.googleusercontent.com/*"],
-  "externally_connectable": {
-    "matches": ["https://thutrang0807hp-ux.github.io/*"]
+  "permissions": [
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/*",
+    "https://*.googleusercontent.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
   },
-  "background": {"service_worker": "background.js", "type": "module"}
+  "content_scripts": [
+    {
+      "matches": [
+        "https://thutrang0807hp-ux.github.io/test-gemoni-chat/*"
+      ],
+      "js": [
+        "studio.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
 }

@@ -6,7 +6,7 @@
 
 1. [Tải mã nguồn ZIP](https://github.com/thutrang0807hp-ux/test-gemoni-chat/archive/refs/heads/main.zip) và giải nén.
 2. Mở `chrome://extensions` trên Chrome máy tính. Bật **Developer mode**, chọn **Load unpacked**, rồi chọn thư mục `extension` trong thư mục vừa giải nén.
-3. Sao chép **ID** của **Gemini Studio Bridge**. Mở [Gemini Studio](https://thutrang0807hp-ux.github.io/test-gemoni-chat/) và dán ID vào **Kết nối extension Chrome**.
+3. Mở hoặc tải lại [Gemini Studio](https://thutrang0807hp-ux.github.io/test-gemoni-chat/). Mục **Kết nối extension Chrome** sẽ báo phiên bản đã kết nối. Nếu đã cài bản 0.1, hãy gỡ bản cũ và chọn thư mục extension mới ở bước 2.
 4. [Đăng nhập Gemini Chat](https://gemini.google.com/app) một lần bằng Chrome. Sau đó nhập prompt trong Studio và bấm **Gửi**. Kết quả hiện trong Studio. Nút **Tạo lại ảnh** dùng prompt hiện tại trong ô kết quả.
 
 Extension mở một tab Gemini ở nền cho mỗi yêu cầu. Cách này phụ thuộc vào giao diện Gemini Chat và quyền tạo ảnh của tài khoản Google. Extension chỉ nhận yêu cầu từ trang Studio của repo này. Không cần Gemini API key.
