@@ -4,8 +4,8 @@
 
 ## Kết nối extension Chrome
 
-1. [Tải Studio Ảnh Gemini 0.2.1](https://thutrang0807hp-ux.github.io/test-gemoni-chat/downloads/studio-anh-gemini-0.2.1.zip) và giải nén.
-2. Mở `chrome://extensions` trên Chrome máy tính. Bật **Developer mode**, chọn **Load unpacked**, rồi chọn thư mục `studio-anh-gemini-0.2.1` vừa giải nén.
+1. [Tải Studio Ảnh Gemini 0.2.2](https://thutrang0807hp-ux.github.io/test-gemoni-chat/downloads/studio-anh-gemini-0.2.2.zip) và giải nén.
+2. Mở `chrome://extensions` trên Chrome máy tính. Bật **Developer mode**, chọn **Load unpacked**, rồi chọn thư mục `studio-anh-gemini-0.2.2` vừa giải nén.
 3. Mở hoặc tải lại [Gemini Studio](https://thutrang0807hp-ux.github.io/test-gemoni-chat/). Mục **Kết nối extension Chrome** sẽ báo phiên bản đã kết nối. Nếu đã cài Gemini Studio Bridge, hãy gỡ bản cũ và chọn thư mục extension mới ở bước 2.
 4. [Đăng nhập Gemini Chat](https://gemini.google.com/app) một lần bằng Chrome. Sau đó nhập prompt trong Studio và bấm **Gửi**. Kết quả hiện trong Studio. Nút **Tạo lại ảnh** dùng prompt hiện tại trong ô kết quả.
 

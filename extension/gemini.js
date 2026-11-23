@@ -8,7 +8,13 @@ export async function generateInGemini(prompt, ratio, refine) {
     .find(button => visible(button) && !button.disabled && button.getAttribute("aria-disabled") !== "true" &&
       ((selector.includes("button.send-button") && button.classList.contains("send-button")) ||
        label.test(button.getAttribute("aria-label") || button.title || "")));
-  const assistantMessages = () => [...document.querySelectorAll("model-response")];
+  const responseSelector = "model-response, .model-response-text";
+  const assistantMessages = () => Array.from(document.querySelectorAll(responseSelector))
+    .filter(node => !node.parentElement?.closest(responseSelector));
+  const isResponding = () => findButton(
+    "button[aria-label], button[title]",
+    /^(stop|dừng|ngừng)(\b|\s)/i
+  );
   const generatedImages = message => [...message.querySelectorAll("img")].filter(image =>
     image.complete && image.naturalWidth >= 256 && image.naturalHeight >= 256 &&
     (image.closest("generated-image, single-image, image-generation, generated-image-container") ||
@@ -74,24 +80,29 @@ export async function generateInGemini(prompt, ratio, refine) {
       const latest = await sendMessage(
         "Viết lại ý tưởng sau thành đúng một prompt tạo ảnh. Giữ ngôn ngữ gốc. Chỉ trả prompt giữa [PROMPT] và [/PROMPT]. Không tạo ảnh ở bước này.\n\n" + prompt
       );
+      let lastText = "";
+      let lastChange = Date.now();
       revised = await until(() => {
         const node = latest();
-        if (!node) return;
-        const content = node.querySelector("message-content")?.innerText || node.innerText;
-        return content.match(/\[PROMPT\]\s*([\s\S]+?)\s*\[\/PROMPT\]/i)?.[1]?.trim();
+        const content = (node?.querySelector("message-content, .markdown")?.innerText || node?.innerText || "").trim();
+        if (content !== lastText) {
+          lastText = content;
+          lastChange = Date.now();
+        }
+        if (!content || isResponding() || !editor()) return;
+        const marked = content.match(/\[PROMPT\]\s*([\s\S]+?)\s*\[\/PROMPT\]/i)?.[1]?.trim();
+        if (marked) return marked;
+        if (Date.now() - lastChange < 3000) return;
+        return content.replace(/^\s*\[PROMPT\]\s*|\s*\[\/PROMPT\]\s*$/gi, "").trim();
       }, 45000);
-      if (!revised) throw new Error("Gemini chưa trả prompt đã chỉnh.");
-      const idle = await until(() => !findButton(
-        "button[aria-label], button[title]", /^(stop( response| generating)?|dừng( phản hồi| tạo)?)$/i
-      ), 15000);
-      if (!idle) throw new Error("Gemini vẫn đang chỉnh prompt. Hãy thử lại.");
+      if (!revised) throw new Error("Gemini chưa trả văn bản sau 45 giây. Hãy thử gửi lại.");
     }
     const latest = await sendMessage("Hãy tạo một ảnh theo đúng prompt này. Tỷ lệ ảnh: " + ratio + "\n\n" + revised);
     const output = await until(() => {
       const node = latest();
       return node && generatedImages(node).at(-1);
     }, 135000);
-    if (!output) throw new Error("Chưa nhận đủ ảnh và prompt từ Gemini. Hãy kiểm tra quyền tạo ảnh trên tài khoản Google rồi thử lại.");
+    if (!output) throw new Error("Gemini chưa trả ảnh sau khoảng 2 phút. Bạn có thể bấm Tạo lại ảnh để thử với prompt đã chỉnh.");
     try {
       return {prompt: revised, ...await readImage(output)};
     } catch (error) {

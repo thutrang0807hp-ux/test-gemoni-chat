@@ -45,7 +45,7 @@ button:disabled{opacity:.5;cursor:default}
 <summary>Kết nối extension Chrome</summary>
 <p id="extension-status" role="status">Đang kiểm tra extension…</p>
 <button type="button" id="extension-check">Kiểm tra lại</button>
-<p><a href="downloads/studio-anh-gemini-0.2.1.zip" download>Tải extension 0.2.1</a> · <a href="https://github.com/thutrang0807hp-ux/test-gemoni-chat#kết-nối-extension-chrome" target="_blank" rel="noopener noreferrer">Hướng dẫn cài đặt</a></p>
+<p><a href="downloads/studio-anh-gemini-0.2.2.zip" download>Tải extension 0.2.2</a> · <a href="https://github.com/thutrang0807hp-ux/test-gemoni-chat#kết-nối-extension-chrome" target="_blank" rel="noopener noreferrer">Hướng dẫn cài đặt</a></p>
 </details>
 <details id="connection">
 <summary>Kết nối Gemini API (tùy chọn)</summary>
@@ -209,7 +209,7 @@ async function run(refine) {
         setStatus("Hãy kết nối extension trước khi gửi prompt.", true);
         return;
       }
-      setStatus(refine ? "Gemini đang chỉnh prompt và tạo ảnh…" : "Gemini đang tạo lại ảnh…");
+      setStatus(refine ? "Gemini đang chỉnh prompt và tạo ảnh. Quá trình này có thể mất vài phút…" : "Gemini đang tạo lại ảnh…");
       const keepAlive = setInterval(() => {
         sendToExtension({type: "studio-ping"}).catch(() => {});
       }, 15000);
