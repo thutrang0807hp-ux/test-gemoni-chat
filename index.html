@@ -27,6 +27,8 @@ button:disabled{opacity:.5;cursor:default}
 .row label{margin:0}
 .preview{display:grid;place-items:center;min-height:310px;border:1px dashed var(--border);border-radius:14px;overflow:hidden;margin-bottom:22px;background:radial-gradient(ellipse at center,#302848,#191925)}
 .preview p{text-align:center;padding:16px}
+.preview[data-dragging]{border-color:var(--accent)}
+.import{margin:12px 0 22px}
 .preview img{display:block;width:100%;max-height:560px;object-fit:contain}
 #status{min-height:1.55em;margin-bottom:0}
 #status[data-error=true]{color:#ffb1b6}
@@ -39,8 +41,8 @@ button:disabled{opacity:.5;cursor:default}
 <div class="grid">
 <section class="panel" aria-labelledby="input-title">
 <h2 id="input-title">Ý tưởng của bạn</h2>
-<details open id="connection">
-<summary>Kết nối Gemini</summary>
+<details id="connection">
+<summary>Kết nối Gemini API (tùy chọn)</summary>
 <label for="key">Gemini API key</label>
 <input id="key" type="password" placeholder="Dán API key" autocomplete="off" spellcheck="false" required form="create">
 <p>Khóa chỉ dùng trong phiên này. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Lấy khóa ở Google AI Studio</a></p>
@@ -53,11 +55,14 @@ button:disabled{opacity:.5;cursor:default}
 <button class="primary" id="generate">Chỉnh prompt và tạo ảnh</button>
 </div>
 </form>
+<div class="row"><a id="open-chat" class="download" href="https://gemini.google.com/" target="_blank" rel="noopener noreferrer">Sao chép prompt và mở Gemini Chat</a></div>
+<p>Dán prompt vào Gemini Chat để Gemini chỉnh prompt và tạo ảnh. Bạn có thể dán prompt đã chỉnh vào ô Kết quả.</p>
 <p id="status" role="status"></p>
 </section>
 <section class="panel" aria-labelledby="output-title">
 <h2 id="output-title">Kết quả</h2>
-<div class="preview"><p id="placeholder">Ảnh của bạn sẽ hiện ở đây.</p><img hidden id="result" alt="Ảnh do Gemini tạo"></div>
+<div class="preview" id="preview"><p id="placeholder">Kéo ảnh tải từ Gemini vào đây.</p><img hidden id="result" alt="Ảnh kết quả"></div>
+<div class="import"><label for="image-file">Hoặc chọn ảnh từ máy</label><input type="file" id="image-file" accept="image/png,image/jpeg,image/webp"></div>
 <label for="revised">Prompt Gemini đã chỉnh</label>
 <textarea id="revised" maxlength="12000" placeholder="Bạn có thể chỉnh lại prompt trước khi tạo ảnh mới."></textarea>
 <div class="row">
@@ -105,6 +110,27 @@ async function request(action, prompt, options) {
   return result;
 }
 
+function showImage(file, filename) {
+  if (imageUrl) URL.revokeObjectURL(imageUrl);
+  imageUrl = URL.createObjectURL(file);
+  image.src = imageUrl;
+  image.hidden = false;
+  get("placeholder").hidden = true;
+  download.href = imageUrl;
+  download.download = filename;
+  download.hidden = false;
+}
+
+function importImage(file) {
+  if (!file || busy) return;
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+    setStatus("Hãy chọn ảnh PNG, JPEG hoặc WebP.", true);
+    return;
+  }
+  showImage(file, file.name);
+  setStatus("Đã thêm ảnh từ máy.");
+}
+
 async function run(refine) {
   if (busy) return;
   if (!key.value.trim()) {
@@ -131,14 +157,7 @@ async function run(refine) {
     setStatus(refine ? "Gemini đang tạo ảnh…" : "Gemini đang tạo lại ảnh…");
     const result = await request("image", prompt, options);
     const bytes = Uint8Array.from(atob(result.image), char => char.charCodeAt(0));
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-    imageUrl = URL.createObjectURL(new Blob([bytes], {type: result.mime}));
-    image.src = imageUrl;
-    image.hidden = false;
-    get("placeholder").hidden = true;
-    download.href = imageUrl;
-    download.download = "gemini-anh." + result.mime.split("/")[1];
-    download.hidden = false;
+    showImage(new Blob([bytes], {type: result.mime}), "gemini-anh." + result.mime.split("/")[1]);
     setStatus(refine ? "Đã tạo ảnh." : "Đã tạo ảnh mới.");
   } catch (error) {
     setStatus(error.message || "Không thể kết nối. Hãy thử lại.", true);
@@ -148,6 +167,44 @@ async function run(refine) {
     updateButtons();
   }
 }
+
+get("open-chat").addEventListener("click", event => {
+  const edited = revised.value.trim();
+  const original = promptInput.value.trim();
+  if (!edited && !original) {
+    event.preventDefault();
+    promptInput.focus();
+    setStatus("Hãy nhập prompt trước khi mở Gemini Chat.", true);
+    return;
+  }
+  const instruction = edited
+    ? "Hãy tạo một ảnh từ prompt sau."
+    : "Hãy chỉnh ý tưởng sau thành một prompt tạo ảnh. Hiển thị prompt đã chỉnh rồi tạo ảnh từ chính prompt đó.";
+  const message = instruction + " Tỷ lệ ảnh: " + ratio.value + ".\n\n" + (edited || original);
+  const copied = navigator.clipboard?.writeText(message) ?? Promise.reject();
+  copied.then(() => {
+    if (!busy) setStatus("Đã sao chép. Dán vào Gemini Chat để tạo ảnh.");
+  }).catch(() => {
+    if (!busy) setStatus("Không thể sao chép tự động. Hãy sao chép prompt trong Studio rồi dán vào Gemini Chat.", true);
+  });
+});
+
+const preview = get("preview");
+preview.addEventListener("dragover", event => {
+  if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+  event.preventDefault();
+  if (!busy) preview.dataset.dragging = "";
+});
+preview.addEventListener("dragleave", () => { delete preview.dataset.dragging; });
+preview.addEventListener("drop", event => {
+  event.preventDefault();
+  delete preview.dataset.dragging;
+  importImage(event.dataTransfer.files[0]);
+});
+get("image-file").addEventListener("change", event => {
+  importImage(event.target.files[0]);
+  event.target.value = "";
+});
 
 key.addEventListener("invalid", () => { get("connection").open = true; });
 form.addEventListener("submit", event => { event.preventDefault(); run(true); });
