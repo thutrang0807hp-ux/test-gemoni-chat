@@ -45,7 +45,7 @@ button:disabled{opacity:.5;cursor:default}
 <summary>Kết nối extension Chrome</summary>
 <p id="extension-status" role="status">Đang kiểm tra extension…</p>
 <button type="button" id="extension-check">Kiểm tra lại</button>
-<p><a href="https://github.com/thutrang0807hp-ux/test-gemoni-chat#kết-nối-extension-chrome" target="_blank" rel="noopener noreferrer">Cài hoặc cập nhật Gemini Studio Bridge</a></p>
+<p><a href="https://github.com/thutrang0807hp-ux/test-gemoni-chat#kết-nối-extension-chrome" target="_blank" rel="noopener noreferrer">Cài hoặc cập nhật Studio Ảnh Gemini</a></p>
 </details>
 <details id="connection">
 <summary>Kết nối Gemini API (tùy chọn)</summary>
@@ -176,7 +176,7 @@ async function checkExtension() {
   try {
     const result = await sendToExtension({type: "studio-ping"});
     if (!result?.ok) throw new Error(result?.error || "Không kết nối được extension.");
-    connection.textContent = "Đã kết nối Gemini Studio Bridge " + result.version + ".";
+    connection.textContent = "Đã kết nối Studio Ảnh Gemini " + result.version + ".";
     return true;
   } catch (error) {
     connection.textContent = error.message;

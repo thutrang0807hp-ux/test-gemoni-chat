@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Gemini Studio Bridge",
+  "name": "Studio Ảnh Gemini",
   "description": "Gửi prompt từ Gemini Studio và trả kết quả từ tab Gemini Chat.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minimum_chrome_version": "120",
   "permissions": [
     "scripting"
