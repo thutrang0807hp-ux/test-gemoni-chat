@@ -41,6 +41,12 @@ button:disabled{opacity:.5;cursor:default}
 <div class="grid">
 <section class="panel" aria-labelledby="input-title">
 <h2 id="input-title">Ý tưởng của bạn</h2>
+<details id="extension-setup" hidden>
+<summary>Kết nối extension Chrome</summary>
+<label for="extension-id">ID extension</label>
+<input id="extension-id" spellcheck="false" autocomplete="off" placeholder="Dán ID từ chrome://extensions">
+<p><a href="https://github.com/thutrang0807hp-ux/test-gemoni-chat#kết-nối-extension-chrome" target="_blank" rel="noopener noreferrer">Cài Gemini Studio Bridge</a></p>
+</details>
 <details id="connection">
 <summary>Kết nối Gemini API (tùy chọn)</summary>
 <label for="key">Gemini API key</label>
@@ -55,8 +61,8 @@ button:disabled{opacity:.5;cursor:default}
 <button class="primary" id="generate">Chỉnh prompt và tạo ảnh</button>
 </div>
 </form>
-<div class="row"><a id="open-chat" class="download" href="https://gemini.google.com/" target="_blank" rel="noopener noreferrer">Sao chép prompt và mở Gemini Chat</a></div>
-<p>Dán prompt vào Gemini Chat để Gemini chỉnh prompt và tạo ảnh. Bạn có thể dán prompt đã chỉnh vào ô Kết quả.</p>
+<div class="row" id="chat-fallback"><a id="open-chat" class="download" href="https://gemini.google.com/" target="_blank" rel="noopener noreferrer">Sao chép prompt và mở Gemini Chat</a></div>
+<p id="chat-hint">Dán prompt vào Gemini Chat để Gemini chỉnh prompt và tạo ảnh. Bạn có thể dán prompt đã chỉnh vào ô Kết quả.</p>
 <p id="status" role="status"></p>
 </section>
 <section class="panel" aria-labelledby="output-title">
@@ -88,8 +94,17 @@ const copy = get("copy");
 const pagesMode = window.location.hostname.endsWith(".github.io");
 if (pagesMode) {
   get("connection").hidden = true;
-  get("generate").hidden = true;
-  retry.hidden = true;
+  get("extension-setup").hidden = false;
+  get("extension-setup").open = true;
+  key.required = false;
+  get("generate").textContent = "Gửi";
+  const extension = get("extension-id");
+  try { extension.value = localStorage.getItem("geminiStudioExtension") || ""; } catch {}
+  extension.addEventListener("change", () => {
+    try { localStorage.setItem("geminiStudioExtension", extension.value.trim()); } catch {}
+  });
+  get("chat-fallback").hidden = true;
+  get("chat-hint").hidden = true;
 }
 let busy = false;
 let imageUrl;
@@ -137,9 +152,32 @@ function importImage(file) {
   setStatus("Đã thêm ảnh từ máy.");
 }
 
+function sendToExtension(id, message) {
+  return new Promise((resolve, reject) => {
+    if (!globalThis.chrome?.runtime?.sendMessage) {
+      reject(new Error("Hãy mở Studio bằng Chrome và cài extension Gemini Studio Bridge."));
+      return;
+    }
+    chrome.runtime.sendMessage(id, message, result => {
+      if (chrome.runtime.lastError || !result) {
+        reject(new Error("Không kết nối được extension. Hãy kiểm tra ID và tải lại Studio sau khi cài."));
+        return;
+      }
+      resolve(result);
+    });
+  });
+}
+
 async function run(refine) {
-  if (busy || pagesMode) return;
-  if (!key.value.trim()) {
+  if (busy) return;
+  const extensionId = pagesMode ? get("extension-id").value.trim() : "";
+  if (pagesMode && !/^[a-p]{32}$/.test(extensionId)) {
+    get("extension-setup").open = true;
+    get("extension-id").focus();
+    setStatus("Hãy nhập ID extension từ chrome://extensions.", true);
+    return;
+  }
+  if (!pagesMode && !key.value.trim()) {
     get("connection").open = true;
     key.focus();
     setStatus("Hãy nhập Gemini API key.", true);
@@ -155,13 +193,30 @@ async function run(refine) {
   revised.readOnly = true;
   updateButtons();
   try {
-    if (refine) {
-      setStatus("Gemini đang chỉnh prompt…");
-      ({prompt} = await request("refine", prompt, options));
-      revised.value = prompt;
+    let result;
+    if (pagesMode) {
+      setStatus(refine ? "Gemini đang chỉnh prompt và tạo ảnh…" : "Gemini đang tạo lại ảnh…");
+      const keepAlive = setInterval(() => {
+        sendToExtension(extensionId, {type: "studio-ping"}).catch(() => {});
+      }, 15000);
+      try {
+        result = await sendToExtension(extensionId, {
+          type: "studio-generate", prompt, ratio: options.ratio, refine
+        });
+      } finally {
+        clearInterval(keepAlive);
+      }
+      if (result.prompt) revised.value = result.prompt;
+      if (result.error) throw new Error(result.error);
+    } else {
+      if (refine) {
+        setStatus("Gemini đang chỉnh prompt…");
+        ({prompt} = await request("refine", prompt, options));
+        revised.value = prompt;
+      }
+      setStatus(refine ? "Gemini đang tạo ảnh…" : "Gemini đang tạo lại ảnh…");
+      result = await request("image", prompt, options);
     }
-    setStatus(refine ? "Gemini đang tạo ảnh…" : "Gemini đang tạo lại ảnh…");
-    const result = await request("image", prompt, options);
     const bytes = Uint8Array.from(atob(result.image), char => char.charCodeAt(0));
     showImage(new Blob([bytes], {type: result.mime}), "gemini-anh." + result.mime.split("/")[1]);
     setStatus(refine ? "Đã tạo ảnh." : "Đã tạo ảnh mới.");
