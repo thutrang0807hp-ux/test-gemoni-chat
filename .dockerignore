@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!requirements.txt
+!app.py
+!studio_server.py
+!templates/
+!templates/studio.html

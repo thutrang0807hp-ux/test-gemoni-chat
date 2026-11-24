@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+{% if active %}<meta http-equiv="refresh" content="8">{% endif %}
+<title>Gemini Studio</title>
+<style>
+:root{color-scheme:dark;font:16px system-ui,sans-serif;background:#151420;color:#faf7ff;--accent:#c5afff;--muted:#c9c3d7}
+*{box-sizing:border-box}
+body{width:min(980px,100% - 32px);margin:44px auto;line-height:1.55}
+h1{font-size:clamp(2.2rem,7vw,4rem);line-height:1.1;margin:0 0 12px;letter-spacing:-.055em}
+h2{margin:0 0 16px}
+p{color:var(--muted)}
+header,.actions{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap}
+.actions{justify-content:flex-start}
+section,article{background:#211f2f;border:1px solid #443e54;border-radius:16px;padding:22px;margin:18px 0}
+label{display:block;margin-bottom:6px;font-weight:650}
+textarea,select{width:100%;border:1px solid #524960;border-radius:8px;background:#151420;color:inherit;font:inherit;padding:10px;margin-bottom:12px}
+textarea{min-height:105px;resize:vertical}
+select{width:auto;margin:0}
+button,.button{border:0;border-radius:8px;background:var(--accent);color:#22163b;padding:9px 14px;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+.secondary{background:#39334b;color:#f5edff}
+.error{color:#ffaab5}
+img{display:block;max-width:100%;max-height:520px;object-fit:contain;margin-bottom:16px;border-radius:10px}
+.prompt{white-space:pre-wrap;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Gemini Studio</h1><p>Gửi prompt, tạo ảnh và xem kết quả khi quay lại.</p></div>
+  {% if session.owner %}
+  <form action="{{ url_for('logout') }}" method="post" class="actions">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <span>{{ session.email }}</span>
+    <button class="secondary">Đăng xuất</button>
+  </form>
+  {% endif %}
+</header>
+<main>
+{% if not session.owner %}
+<section>
+  <h2>Đăng nhập để mở Studio</h2>
+  <a class="button" href="{{ url_for('login') }}">Đăng nhập bằng Google</a>
+</section>
+{% else %}
+<section>
+  <h2>Ý tưởng của bạn</h2>
+  {% if active %}
+  <p role="status">Yêu cầu đang chạy trên máy chủ. Bạn có thể đóng trình duyệt rồi quay lại xem kết quả.</p>
+  {% else %}
+  <form action="{{ url_for('enqueue') }}" method="post">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <label for="prompt">Prompt gốc</label>
+    <textarea id="prompt" name="prompt" required maxlength="12000"></textarea>
+    <div class="actions">
+      <label for="ratio">Tỷ lệ ảnh</label>
+      <select id="ratio" name="ratio">{% for ratio in ratios %}<option>{{ ratio }}</option>{% endfor %}</select>
+      <button>Gửi</button>
+    </div>
+  </form>
+  {% endif %}
+  {% if conflict %}<p class="error">Mỗi tài khoản xử lý một yêu cầu tại một thời điểm.</p>{% endif %}
+</section>
+{% if jobs %}<h2>Kết quả gần đây</h2>{% endif %}
+{% for job in jobs %}
+<article>
+  <strong>{{ labels[job.status] }} · {{ job.ratio }}</strong>
+  <p class="prompt">{{ job.prompt }}</p>
+  {% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
+  {% if job.mime %}
+    {% set asset = url_for('image', job_id=job.id) %}
+    <img src="{{ asset }}" alt="Ảnh do Gemini tạo" loading="lazy">
+    <a class="button secondary" href="{{ asset }}" download="gemini-{{ job.id[:8] }}.{{ job.mime.split('/')[1] }}">Tải ảnh</a>
+  {% endif %}
+  {% if job.revised %}
+    {% if active %}
+      <p class="prompt">{{ job.revised }}</p>
+    {% else %}
+    <form action="{{ url_for('enqueue') }}" method="post">
+      <input type="hidden" name="csrf" value="{{ session.csrf }}">
+      <input type="hidden" name="mode" value="image">
+      <label for="prompt-{{ job.id }}">Prompt dùng để tạo ảnh</label>
+      <textarea id="prompt-{{ job.id }}" name="prompt" required maxlength="12000">{{ job.revised }}</textarea>
+      <div class="actions">
+        <label for="ratio-{{ job.id }}">Tỷ lệ ảnh</label>
+        <select id="ratio-{{ job.id }}" name="ratio">
+          {% for ratio in ratios %}<option{% if ratio == job.ratio %} selected{% endif %}>{{ ratio }}</option>{% endfor %}
+        </select>
+        <button class="secondary">Tạo lại ảnh</button>
+      </div>
+    </form>
+    {% endif %}
+  {% endif %}
+</article>
+{% endfor %}
+{% endif %}
+</main>
+</body>
+</html>

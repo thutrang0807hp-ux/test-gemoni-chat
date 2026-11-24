@@ -30,3 +30,23 @@ Nhập prompt rồi bấm **Sao chép prompt và mở Gemini Chat**. Dán nội 
 Lấy API key ở [Google AI Studio](https://aistudio.google.com/apikey), dán vào mục **Kết nối Gemini**, rồi nhập prompt và bấm **Chỉnh prompt và tạo ảnh**. Dự án Google cần có quyền và hạn mức sử dụng mô hình tạo ảnh Gemini.
 
 App gửi yêu cầu đến Gemini qua máy chủ Python. API key được dùng trong phiên hiện tại và không được lưu vào mã nguồn. Bản GitHub Pages chạy luồng Gemini Chat. Để gọi Gemini API qua Studio, hãy chạy máy chủ Python trên máy.
+
+## Studio chạy trên máy chủ
+
+Bản này dùng một dịch vụ Python chạy liên tục. Người dùng đăng nhập bằng Google, gửi yêu cầu rồi có thể thoát Chrome. Khi quay lại cùng tài khoản, Studio đọc trạng thái và kết quả đã lưu trong SQLite.
+
+1. Tạo OAuth client loại **Web application** trong Google Cloud. Thêm redirect URI dạng `https://studio.example.com/auth/google/callback` cho domain sẽ host Studio. Khi OAuth app đang ở chế độ Testing, thêm tài khoản được phép vào danh sách test users.
+2. Trong nơi quản lý biến môi trường của máy chủ, khai báo các biến sau. Giữ thông tin bí mật ở máy chủ.
+
+| Biến | Giá trị |
+| --- | --- |
+| `STUDIO_ORIGIN` | URL HTTPS của Studio, ví dụ `https://studio.example.com` |
+| `STUDIO_SESSION_SECRET` | Chuỗi ngẫu nhiên, tạo bằng `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `GOOGLE_CLIENT_ID` | Client ID của OAuth app |
+| `GOOGLE_CLIENT_SECRET` | Client secret của OAuth app |
+| `GOOGLE_ALLOWED_EMAIL` | Địa chỉ Google được phép đăng nhập và sử dụng hạn mức Gemini |
+| `GEMINI_API_KEY` | Khóa Gemini API của máy chủ, có quyền với mô hình tạo ảnh |
+
+3. Chạy **một** instance bằng Dockerfile sau một HTTPS reverse proxy. Dùng volume bền vững gắn tại `/data`, và giữ dịch vụ chạy cả khi không có người mở trang. Cổng HTTP trong container là `8080`. Nếu chạy trực tiếp, cài `requirements.txt`, đặt `STUDIO_DATABASE` trỏ tới SQLite trên ổ lưu trữ bền vững rồi chạy `python studio_server.py`.
+
+Hàng đợi xử lý độc lập với phiên web. Yêu cầu đang chờ và ảnh đã hoàn tất được giữ trong SQLite. Nếu chính máy chủ khởi động lại giữa lúc Gemini đang xử lý, Studio đánh dấu yêu cầu lỗi để bạn gửi lại.
