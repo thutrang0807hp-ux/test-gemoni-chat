@@ -76,7 +76,7 @@ class Studio:
         ttk.Label(left, text="Prompt gốc").pack(anchor="w")
         self.prompt = tk.Text(left, height=6, wrap="word", font=("Segoe UI", 11))
         self.prompt.pack(fill="x", pady=(5, 12))
-        ttk.Label(left, text="Prompt đã chỉnh").pack(anchor="w")
+        ttk.Label(left, text="Prompt dùng để tạo ảnh").pack(anchor="w")
         self.revised = tk.Text(left, height=6, wrap="word", font=("Segoe UI", 11))
         self.revised.pack(fill="x", pady=(5, 12))
         options = ttk.Frame(left)

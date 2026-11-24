@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -7,6 +8,7 @@ from tempfile import TemporaryDirectory
 from gemini_webapi import GeminiClient
 from gemini_webapi import client as gemini_client_module
 from gemini_webapi.exceptions import AuthError, UsageLimitExceededError
+from gemini_webapi.types import GeneratedImage
 from PIL import Image
 
 from app import ApiError
@@ -38,20 +40,38 @@ async def run_chat_session(session, prompt, ratio, refine, updates, client_facto
             if refine:
                 updates.put(("status", "Gemini đang chỉnh prompt…"))
                 result = await asyncio.wait_for(client.generate_content(
-                    "Viết lại ý tưởng sau thành một prompt tạo ảnh, giữ ngôn ngữ và ý định gốc. "
-                    "Chỉ trả nội dung prompt, chưa tạo ảnh.\n\n" + prompt,
+                    "Đây là tác vụ biên tập văn bản. Viết lại mô tả sau thành một đoạn "
+                    "mô tả cảnh giàu chi tiết, giữ nguyên ngôn ngữ và ý tưởng. "
+                    "Đặt đoạn đã viết giữa [PROMPT] và [/PROMPT].\n\n" + prompt,
                 ), 120)
-                revised = (result.text or "").strip()
-                if not revised:
-                    raise ApiError("Gemini chưa trả prompt đã chỉnh. Hãy thử lại.")
+                marked = re.search(r"\[PROMPT\]\s*(.*?)\s*\[/PROMPT\]", result.text or "", re.DOTALL)
+                if marked and marked[1].strip():
+                    revised = marked[1].strip()
                 updates.put(("prompt", revised))
-            updates.put(("status", "Gemini đang tạo ảnh…"))
+
+            model_options = {}
+            for name in ("gemini-2.5-flash-image", "gemini-3.1-flash-image", "gemini-flash"):
+                try:
+                    model = client.resolve_model(name)
+                except ValueError:
+                    continue
+                if model.is_available:
+                    model_options["model"] = model
+                    break
+
+            phase = "Gemini đang tạo ảnh…"
+            if refine and revised == prompt:
+                phase = "Gemini đang tạo ảnh từ prompt gốc."
+            updates.put(("status", phase))
             result = await asyncio.wait_for(client.generate_content(
-                f"Hãy tạo một ảnh từ đúng prompt sau. Tỷ lệ ảnh {ratio}.\n\n{revised}",
+                f"Generate an original image. Output the image itself. Aspect ratio {ratio}.\n\n{revised}",
+                **model_options,
             ), 180)
-            images = result.images
+            images = [image for image in result.images if isinstance(image, GeneratedImage)]
             if not images:
-                raise ApiError("Gemini chưa trả ảnh. Hãy kiểm tra quyền tạo ảnh của tài khoản rồi thử lại.")
+                detail = " ".join((result.text or "").split())[:240]
+                suffix = f" Gemini trả lời: {detail}" if detail else ""
+                raise ApiError("Gemini Chat không trả ảnh cho lượt này." + suffix)
 
             saved = await asyncio.wait_for(images[0].save(path=folder, filename="result"), 45)
             path = Path(saved).resolve()

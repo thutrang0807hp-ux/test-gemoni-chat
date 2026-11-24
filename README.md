@@ -53,7 +53,7 @@ Hàng đợi xử lý độc lập với phiên web. Yêu cầu đang chờ và 
 
 ## Bản cài đặt Windows
 
-Tải [Studio-Anh-Gemini-Setup.exe](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/windows-v0.2.0/Studio-Anh-Gemini-Setup.exe). Mở **Studio Ảnh Gemini** từ Start Menu. Bản này dùng phiên Gemini Chat của bạn và không cần Gemini API key.
+Tải [Studio-Anh-Gemini-Setup.exe](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/windows-v0.2.1/Studio-Anh-Gemini-Setup.exe). Mở **Studio Ảnh Gemini** từ Start Menu. Bản này dùng phiên Gemini Chat của bạn và không cần Gemini API key.
 
 1. Đăng nhập tài khoản của bạn tại [Gemini Chat](https://gemini.google.com/app).
 2. Trong tab Gemini, mở DevTools bằng `F12`, vào **Application → Storage → Cookies**, rồi chọn mục Gemini. Tìm `__Secure-1PSID` và `__Secure-1PSIDTS` của cùng phiên.
