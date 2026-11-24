@@ -50,3 +50,11 @@ Bản này dùng một dịch vụ Python chạy liên tục. Người dùng đ�
 3. Chạy **một** instance bằng Dockerfile sau một HTTPS reverse proxy. Dùng volume bền vững gắn tại `/data`, và giữ dịch vụ chạy cả khi không có người mở trang. Cổng HTTP trong container là `8080`. Nếu chạy trực tiếp, cài `requirements.txt`, đặt `STUDIO_DATABASE` trỏ tới SQLite trên ổ lưu trữ bền vững rồi chạy `python studio_server.py`.
 
 Hàng đợi xử lý độc lập với phiên web. Yêu cầu đang chờ và ảnh đã hoàn tất được giữ trong SQLite. Nếu chính máy chủ khởi động lại giữa lúc Gemini đang xử lý, Studio đánh dấu yêu cầu lỗi để bạn gửi lại.
+
+## Bản cài đặt Windows
+
+Mở [bản phát hành Windows](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/tag/windows-v0.1.0) và tải `Studio-Anh-Gemini-Setup.exe`. Sau khi cài, mở **Studio Ảnh Gemini** từ Start Menu và nhập Gemini API key một lần. Khóa được lưu trong Windows Credential Manager.
+
+Bấm **Chỉnh prompt và tạo ảnh**. Khi đóng cửa sổ, app tiếp tục chạy trong khay hệ thống cạnh đồng hồ. Bấm biểu tượng Studio để mở lại. Ảnh hoàn tất gần nhất được lưu trên máy và xuất hiện khi mở lại app. Khi muốn dừng app, chọn **Thoát hẳn** trong menu khay hệ thống sau khi lượt tạo ảnh kết thúc.
+
+Bản này gọi Gemini API trực tiếp qua Internet. Chrome có thể tắt. Máy Windows cần tiếp tục chạy cho đến khi ảnh hoàn tất.
