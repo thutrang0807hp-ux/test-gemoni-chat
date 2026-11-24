@@ -2,3 +2,4 @@ PyInstaller>=6.12,<7
 Pillow>=11,<13
 pystray==0.19.5
 keyring>=25,<26
+gemini-webapi==2.1.1

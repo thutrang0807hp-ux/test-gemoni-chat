@@ -53,8 +53,11 @@ Hàng đợi xử lý độc lập với phiên web. Yêu cầu đang chờ và 
 
 ## Bản cài đặt Windows
 
-Mở [bản phát hành Windows](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/tag/windows-v0.1.0) và tải `Studio-Anh-Gemini-Setup.exe`. Sau khi cài, mở **Studio Ảnh Gemini** từ Start Menu và nhập Gemini API key một lần. Khóa được lưu trong Windows Credential Manager.
+Tải [Studio-Anh-Gemini-Setup.exe](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/windows-v0.2.0/Studio-Anh-Gemini-Setup.exe). Mở **Studio Ảnh Gemini** từ Start Menu. Bản này dùng phiên Gemini Chat của bạn và không cần Gemini API key.
 
-Bấm **Chỉnh prompt và tạo ảnh**. Khi đóng cửa sổ, app tiếp tục chạy trong khay hệ thống cạnh đồng hồ. Bấm biểu tượng Studio để mở lại. Ảnh hoàn tất gần nhất được lưu trên máy và xuất hiện khi mở lại app. Khi muốn dừng app, chọn **Thoát hẳn** trong menu khay hệ thống sau khi lượt tạo ảnh kết thúc.
+1. Đăng nhập tài khoản của bạn tại [Gemini Chat](https://gemini.google.com/app).
+2. Trong tab Gemini, mở DevTools bằng `F12`, vào **Application → Storage → Cookies**, rồi chọn mục Gemini. Tìm `__Secure-1PSID` và `__Secure-1PSIDTS` của cùng phiên.
+3. Trong Studio, bấm **Kết nối Gemini Chat** và dán hai giá trị lần lượt vào hộp thoại. Đây là thông tin đăng nhập. Chỉ nhập vào bản Studio trên PC của bạn. Studio lưu hai giá trị trong Windows Credential Manager.
+4. Bấm **Chỉnh prompt và tạo ảnh**. Bấm **X** để đưa app xuống khay cạnh đồng hồ. Bạn có thể thoát Chrome, miễn PC vẫn bật và Studio vẫn chạy. Bấm biểu tượng Studio để xem hoặc lưu ảnh khi hoàn tất.
 
-Bản này gọi Gemini API trực tiếp qua Internet. Chrome có thể tắt. Máy Windows cần tiếp tục chạy cho đến khi ảnh hoàn tất.
+Bản này dùng thư viện [Gemini-API](https://github.com/HanaokaYuzu/Gemini-API) để gọi Gemini Web từ PC. Đây là tích hợp không chính thức. Khi Google hết hạn phiên hoặc yêu cầu xác thực lại, hãy kết nối lại trong Studio.

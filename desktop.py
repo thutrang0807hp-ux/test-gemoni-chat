@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 import os
 import queue
 import sqlite3
@@ -14,7 +15,8 @@ import pystray
 from keyring.backends.Windows import WinVaultKeyring
 from PIL import Image, ImageDraw, ImageTk
 
-from app import ApiError, generate
+from app import ApiError
+from gemini_chat import run_chat_job
 
 TITLE = "Studio Ảnh Gemini"
 KEY_SERVICE = "StudioAnhGemini"
@@ -33,27 +35,14 @@ def open_database(path):
     return db
 
 
-def generate_image(key, prompt, ratio, refine, updates, provider=generate):
-    revised = prompt
+def generate_image(session, prompt, ratio, refine, updates, provider=run_chat_job):
     try:
-        if refine:
-            updates.put(("status", "Gemini đang chỉnh prompt…"))
-            revised = provider("refine", key, prompt, ratio)["prompt"]
-            updates.put(("prompt", revised))
-        updates.put(("status", "Gemini đang tạo ảnh…"))
-        result = provider("image", key, revised, ratio)
-        mime = result["mime"]
-        data = base64.b64decode(result["image"], validate=True)
-        if mime not in FORMATS:
-            raise ValueError("Unsupported image format")
-        with Image.open(io.BytesIO(data)) as image:
-            image.verify()
-        updates.put(("done", (prompt, revised, ratio, mime, data)))
+        revised, image = provider(session, prompt, ratio, refine, updates)
+        updates.put(("done", (prompt, revised, ratio, "image/png", image)))
     except ApiError as error:
         updates.put(("error", str(error)))
     except Exception:
-        updates.put(("error", "Máy chưa nhận được ảnh hợp lệ. Hãy thử tạo lại ảnh."))
-
+        updates.put(("error", "Không kết nối được Gemini Chat hoặc chưa nhận được ảnh. Hãy thử kết nối lại phiên."))
 
 class Studio:
     def __init__(self, root, path):
@@ -74,7 +63,7 @@ class Studio:
         header = ttk.Frame(root, padding=(22, 15))
         header.pack(fill="x")
         ttk.Label(header, text=TITLE, font=("Segoe UI", 22, "bold")).pack(side="left")
-        ttk.Button(header, text="Cài Gemini API key", command=self.configure_key).pack(side="right")
+        ttk.Button(header, text="Kết nối Gemini Chat", command=self.configure_session).pack(side="right")
 
         content = ttk.Frame(root, padding=(22, 0))
         content.pack(fill="both", expand=True)
@@ -140,24 +129,30 @@ class Studio:
         self.root.lift()
         self.root.focus_force()
 
-    def configure_key(self):
-        key = simpledialog.askstring(
-            "Cài Gemini API key", "Dán Gemini API key từ Google AI Studio.",
+    def configure_session(self):
+        if self.busy:
+            self.status.set("Hãy đợi lượt tạo ảnh hiện tại hoàn tất.")
+            return None
+        psid = simpledialog.askstring(
+            "Kết nối Gemini Chat · 1/2", "Dán giá trị __Secure-1PSID từ phiên Gemini của bạn.",
             show="*", parent=self.root,
         )
-        if key is None:
+        if not psid or not psid.strip():
             return None
-        key = key.strip()
-        if not key:
-            self.status.set("API key đang trống.")
+        psidts = simpledialog.askstring(
+            "Kết nối Gemini Chat · 2/2", "Dán giá trị __Secure-1PSIDTS từ cùng phiên Gemini.",
+            show="*", parent=self.root,
+        )
+        if not psidts or not psidts.strip():
             return None
+        session = {"psid": psid.strip(), "psidts": psidts.strip()}
         try:
-            self.keychain.set_password(KEY_SERVICE, "gemini-api-key", key)
+            self.keychain.set_password(KEY_SERVICE, "gemini-chat-session", json.dumps(session))
         except Exception:
-            messagebox.showerror(TITLE, "Windows không lưu được API key.", parent=self.root)
+            messagebox.showerror(TITLE, "Windows không lưu được phiên Gemini.", parent=self.root)
             return None
-        self.status.set("Đã lưu API key trong Windows Credential Manager.")
-        return key
+        self.status.set("Đã lưu phiên trên máy. Bấm tạo ảnh để kiểm tra phiên Gemini.")
+        return session
 
     def start(self, refine):
         if self.busy:
@@ -169,15 +164,16 @@ class Studio:
             field.focus_set()
             return
         try:
-            key = self.keychain.get_password(KEY_SERVICE, "gemini-api-key")
+            stored = self.keychain.get_password(KEY_SERVICE, "gemini-chat-session")
+            session = json.loads(stored) if stored else None
         except Exception:
-            self.status.set("Không đọc được API key từ Windows Credential Manager.")
+            self.status.set("Không đọc được phiên Gemini từ Windows Credential Manager.")
             return
-        key = key or self.configure_key()
-        if not key:
+        session = session or self.configure_session()
+        if not session:
             return
         self.set_busy(True)
-        Thread(target=generate_image, args=(key, prompt, self.ratio.get(), refine, self.updates), daemon=True).start()
+        Thread(target=generate_image, args=(session, prompt, self.ratio.get(), refine, self.updates), daemon=True).start()
 
     def set_busy(self, busy):
         self.busy = busy
