@@ -1,0 +1,10 @@
+{
+  "name": "studio-flow-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@park-sang-gwon/google-flow-mcp": "0.3.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "playwright-core": "1.62.1"
+  }
+}

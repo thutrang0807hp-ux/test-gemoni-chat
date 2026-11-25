@@ -1,3 +1,4 @@
 __pycache__/
 .env
 studio-data/
+node_modules/

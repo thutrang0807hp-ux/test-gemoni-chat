@@ -53,11 +53,11 @@ Hàng đợi xử lý độc lập với phiên web. Yêu cầu đang chờ và 
 
 ## Bản cài đặt Windows
 
-Tải [Studio-Anh-Gemini-Setup.exe](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/windows-v0.2.1/Studio-Anh-Gemini-Setup.exe). Mở **Studio Ảnh Gemini** từ Start Menu. Bản này dùng phiên Gemini Chat của bạn và không cần Gemini API key.
+Tải [Studio Ảnh Gemini 0.3.0](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/windows-v0.3.0/Studio-Anh-Gemini-Setup.exe). Studio dùng Chrome đã cài trên máy để tự mở một hồ sơ Google riêng. Bộ cài đã kèm Node.js và phần kết nối Flow. Bạn có thể thoát cửa sổ Chrome thường dùng trong khi hồ sơ riêng của Studio vẫn chạy.
 
-1. Đăng nhập tài khoản của bạn tại [Gemini Chat](https://gemini.google.com/app).
-2. Trong tab Gemini, mở DevTools bằng `F12`, vào **Application → Storage → Cookies**, rồi chọn mục Gemini. Tìm `__Secure-1PSID` và `__Secure-1PSIDTS` của cùng phiên.
-3. Trong Studio, bấm **Kết nối Gemini Chat** và dán hai giá trị lần lượt vào hộp thoại. Đây là thông tin đăng nhập. Chỉ nhập vào bản Studio trên PC của bạn. Studio lưu hai giá trị trong Windows Credential Manager.
-4. Bấm **Chỉnh prompt và tạo ảnh**. Bấm **X** để đưa app xuống khay cạnh đồng hồ. Bạn có thể thoát Chrome, miễn PC vẫn bật và Studio vẫn chạy. Bấm biểu tượng Studio để xem hoặc lưu ảnh khi hoàn tất.
+1. Bấm **Kết nối Google**, đăng nhập trên trang Google trong cửa sổ riêng và mở hoặc tạo một dự án trong tab Flow. Phiên đăng nhập được lưu trong hồ sơ trình duyệt trên PC.
+2. Trong tab **Viết lại kịch bản**, dán kịch bản tham khảo và thông tin sản phẩm rồi bấm **Viết lại kịch bản**. Gemini trả bản viết lại trong Studio.
+3. Trong tab **Thay đồ trong ảnh**, bấm **Đọc dự án**, chọn ảnh người mẫu và ảnh bộ đồ. Nhập yêu cầu thay đồ rồi bấm **Viết prompt và tạo ảnh**. Có thể dùng **Chỉ viết prompt thay đồ** hoặc chỉnh prompt rồi bấm **Tạo lại ảnh trong Flow**.
+4. Studio lưu bản làm việc và ảnh thành công gần nhất trên PC. Bấm **X** để thu Studio xuống khay hệ thống trong khi tác vụ chạy.
 
-Bản này dùng thư viện [Gemini-API](https://github.com/HanaokaYuzu/Gemini-API) để gọi Gemini Web từ PC. Đây là tích hợp không chính thức. Khi Google hết hạn phiên hoặc yêu cầu xác thực lại, hãy kết nối lại trong Studio.
+Không cần API key hay chép cookie. Phần Flow dùng [google-flow-mcp của ParkSangGwon](https://github.com/ParkSangGwon/google-flow-mcp) phiên bản 0.3.1. Tích hợp điều khiển giao diện web, nên việc tạo thật cần tài khoản có quyền truy cập Gemini và Flow. Khi Google thay đổi giao diện, Studio có thể báo lỗi và cần cập nhật.
