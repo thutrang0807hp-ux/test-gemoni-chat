@@ -65,6 +65,23 @@ export function generatedImage(output) {
   return output.candidates?.[output.chosen ?? 0]?.generatedImages?.[0];
 }
 
+export function readClipboard(run = execFileSync) {
+  let value;
+  try {
+    value = run("powershell.exe", [
+      "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+      "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-Clipboard -Raw",
+    ], {encoding: "utf8", timeout: 5000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"]});
+  } catch {
+    throw new Error("Khong doc duoc clipboard. Hay thu sao chep lai.");
+  }
+  value = value.trim();
+  if (!/^[\x21-\x7e]+$/.test(value) || /[;,]/.test(value)) {
+    throw new Error("Clipboard chua co gia tri cookie hop le.");
+  }
+  return value;
+}
+
 async function inputSession() {
   if (!process.stdin.isTTY || process.platform !== "win32") {
     throw new Error("Mo Run-Qutek-Test.cmd trong cua so Terminal tren Windows.");
@@ -79,8 +96,21 @@ async function inputSession() {
     return answer.trim();
   }
   try {
-    const psid = await ask("Dan Value cua __Secure-1PSID, sau do Enter: ");
-    const psidts = await ask("Dan Value cua __Secure-1PSIDTS, sau do Enter: ");
+    async function copyValue(name, previous) {
+      for (;;) {
+        await ask("Sao chep Value cua " + name + " trong Chrome, quay lai day roi nhan Enter: ");
+        try {
+          const value = readClipboard();
+          if (value === previous) throw new Error("Clipboard chua doi. Hay sao chep gia tri thu hai.");
+          console.log("Da nhan " + name + ".");
+          return value;
+        } catch (error) {
+          console.log(error.message);
+        }
+      }
+    }
+    const psid = await copyValue("__Secure-1PSID");
+    const psidts = await copyValue("__Secure-1PSIDTS", psid);
     for (;;) {
       await ask("Thoat han Chrome, sau do nhan Enter de bat dau: ");
       const listing = execFileSync("tasklist.exe", ["/FI", "IMAGENAME eq chrome.exe", "/FO", "CSV", "/NH"], {encoding: "utf8"});
