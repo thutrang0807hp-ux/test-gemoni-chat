@@ -57,19 +57,21 @@ async function waitForImage(response) {
   await response.waitFor({state:"visible",timeout:90000});
   const end = Date.now() + 120000;
   while (Date.now() < end) {
-    const images = await response.locator("img").evaluateAll(nodes => nodes.map(image => ({
+    const elements = response.locator("img");
+    const images = await elements.evaluateAll(nodes => nodes.map((image, index) => ({
+      index,
       url: image.currentSrc,
       identified: Boolean(image.closest("generated-image, generated-image-container, single-image, image-generation")),
       width: image.naturalWidth, height: image.naturalHeight,
     })));
     const image = images.find(item => imageSource(item.url, item.identified, item.width, item.height));
-    if (image) return image;
+    if (image) return {...image, element: elements.nth(image.index)};
     await new Promise(resolve => setTimeout(resolve, 600));
   }
   throw new Error("Gemini chưa trả ảnh mới cho lượt này. Có thể yêu cầu chỉ nhận phản hồi văn bản.");
 }
 
-async function saveResult(context, page, image, output) {
+async function downloadImage(context, page, image) {
   let bytes, type;
   if (image.url.startsWith("blob:") || image.url.startsWith("data:")) {
     const result = await page.evaluate(async url => {
@@ -100,6 +102,26 @@ async function saveResult(context, page, image, output) {
   }
   if (!formats.includes(type) || !bytes.length || bytes.length > 24_000_000) {
     throw new Error("File ảnh không hợp lệ hoặc vượt quá 24 MB.");
+  }
+  return bytes;
+}
+
+async function saveResult(context, page, image, output) {
+  let bytes;
+  try {
+    bytes = await downloadImage(context, page, image);
+  } catch {
+    // The browser can display a resource that a second request cannot read.
+    try {
+      const rendered = await image.element.evaluate((element, url) =>
+        element.currentSrc === url && element.complete && element.naturalWidth >= 256 &&
+        element.naturalHeight >= 256, image.url, {timeout:5000});
+      if (!rendered) throw new Error("Ảnh kết quả đã thay đổi.");
+      bytes = await image.element.screenshot({type:"png", timeout:10000, scale:"device"});
+      if (!bytes.length || bytes.length > 24_000_000) throw new Error("Kích thước ảnh không hợp lệ.");
+    } catch {
+      throw new Error("Gemini đã hiện ảnh nhưng app chưa lấy được ảnh. Hãy thử tạo lại.");
+    }
   }
   await writeFile(output, bytes, {flag:"wx"});
 }
