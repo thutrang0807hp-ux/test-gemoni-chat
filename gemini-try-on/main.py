@@ -1,18 +1,46 @@
 import io
 import os
 import queue
+import subprocess
 import sys
 import tkinter as tk
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from threading import Thread
 from tkinter import filedialog, ttk
 
 import pystray
 from PIL import Image, ImageDraw, ImageTk
 
-from browser_bridge import GeminiWorkspace, WorkspaceError
+from browser_bridge import GeminiWorkspace, WorkspaceError, runtime_directory
 
 TITLE = "Gemini Tạo Ảnh"
+
+
+def remove_watermark(data):
+    tool = runtime_directory() / "watermark" / "GeminiWatermarkTool.exe"
+    if not tool.is_file():
+        raise WorkspaceError("Bản cài thiếu công cụ xử lý dấu Gemini.")
+    with TemporaryDirectory() as directory:
+        original = Path(directory) / "original.png"
+        updated = Path(directory) / "updated.png"
+        original.write_bytes(data)
+        try:
+            result = subprocess.run(
+                [str(tool), "--input", original.name, "--output", updated.name],
+                cwd=directory, timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if result.returncode == 1:
+                return None
+            if result.returncode == 0:
+                processed = updated.read_bytes()
+                with Image.open(io.BytesIO(processed)) as image:
+                    image.verify()
+                return processed
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise WorkspaceError("Không xử lý được dấu Gemini. Ảnh gốc vẫn có thể lưu.") from error
+        raise WorkspaceError("Không xử lý được dấu Gemini. Ảnh gốc vẫn có thể lưu.")
 
 
 class ImageStudio:
@@ -25,6 +53,7 @@ class ImageStudio:
         self.busy = False
         self.tray_ready = False
         self.picture = None
+        self.original_picture = None
         self.buttons = []
         root.title(TITLE)
         root.geometry("940x620")
@@ -56,6 +85,8 @@ class ImageStudio:
         self.preview.pack(fill="both", expand=True)
         self.save_button = ttk.Button(right, text="Lưu ảnh…", command=self.save_image, state="disabled")
         self.save_button.pack(fill="x", pady=(8, 0))
+        self.watermark_button = ttk.Button(right, text="Bỏ dấu sao Gemini", command=self.clean_image, state="disabled")
+        self.watermark_button.pack(fill="x", pady=(5, 0))
         self.status = tk.StringVar(value="Đăng nhập trong cửa sổ Google của app, đóng cửa sổ đó rồi kiểm tra kết nối.")
         ttk.Label(root, textvariable=self.status, wraplength=690, padding=(20, 12)).pack(fill="x")
 
@@ -95,6 +126,9 @@ class ImageStudio:
         for button in self.buttons:
             button.configure(state="disabled" if value else "normal")
         self.prompt.configure(state="disabled" if value else "normal")
+        self.watermark_button.configure(
+            state="normal" if not value and self.original_picture is not None else "disabled"
+        )
 
     def run(self, status, event, task):
         if self.busy:
@@ -135,11 +169,19 @@ class ImageStudio:
         if prompt := self.read_prompt():
             self.run("Gemini đang tạo ảnh từ prompt…", "image", lambda: self.google.create_image(prompt))
 
-    def show_image(self, data):
+    def clean_image(self):
+        original = self.original_picture
+        if original is not None:
+            self.run("Đang xử lý dấu sao trên máy…", "watermark", lambda: remove_watermark(original))
+
+    def show_image(self, data, *, original=True):
         with Image.open(io.BytesIO(data)) as image:
             image.thumbnail((365, 390))
             self.thumbnail = ImageTk.PhotoImage(image)
         self.picture = data
+        if original:
+            self.original_picture = data
+            self.watermark_button.configure(state="normal")
         self.preview.configure(image=self.thumbnail, text="")
         self.save_button.configure(state="normal")
 
@@ -182,6 +224,12 @@ class ImageStudio:
                     self.prompt.delete("1.0", "end")
                     self.prompt.insert("1.0", value)
                     self.status.set("Đã viết lại prompt. Bạn có thể chỉnh hoặc bấm Tạo ảnh bằng Gemini.")
+                elif kind == "watermark":
+                    if value is None:
+                        self.status.set("Công cụ không phát hiện dấu sao Gemini trong ảnh này.")
+                    else:
+                        self.show_image(value, original=False)
+                        self.status.set("Đã xử lý dấu sao. Bấm Lưu ảnh để lưu bản đã xử lý.")
                 elif kind == "image":
                     self.show_image(value)
                     try:
@@ -198,7 +246,11 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["--self-test"]:
         from ctypes import WINFUNCTYPE, byref, windll
         from ctypes.wintypes import BOOL, DWORD, HWND, LPARAM
-        from tempfile import TemporaryDirectory
+
+        blank = io.BytesIO()
+        Image.new("RGB", (1024, 1024), "black").save(blank, format="PNG")
+        if remove_watermark(blank.getvalue()) is not None:
+            raise RuntimeError("Watermark tool incorrectly processed an unmarked image.")
 
         with TemporaryDirectory() as directory:
             workspace = GeminiWorkspace(Path(directory))
