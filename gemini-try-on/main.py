@@ -1,7 +1,6 @@
 import io
 import os
 import queue
-import subprocess
 import sys
 import tkinter as tk
 from pathlib import Path
@@ -11,7 +10,7 @@ from tkinter import filedialog, ttk
 import pystray
 from PIL import Image, ImageDraw, ImageTk
 
-from browser_bridge import GeminiWorkspace, WorkspaceError, runtime_directory
+from browser_bridge import GeminiWorkspace, WorkspaceError
 
 TITLE = "Gemini Thử Đồ"
 DEFAULT_PROMPT = "Thay trang phục theo ảnh bộ đồ. Giữ nguyên gương mặt, tư thế và nền."
@@ -67,8 +66,12 @@ class TryOn:
         self.preview.pack(fill="both", expand=True)
         self.save_button = ttk.Button(right, text="Lưu ảnh…", command=self.save_image, state="disabled")
         self.save_button.pack(fill="x", pady=(8, 0))
-        self.status = tk.StringVar(value="Đăng nhập một lần từ nút Kết nối Gemini.")
+        self.status = tk.StringVar(value="Mở Chrome đã đăng nhập Gemini và kết nối extension.")
         ttk.Label(root, textvariable=self.status, wraplength=690, padding=(20, 12)).pack(fill="x")
+        try:
+            self.google.start()
+        except WorkspaceError as error:
+            self.status.set(str(error))
 
         icon = Image.new("RGBA", (64, 64))
         draw = ImageDraw.Draw(icon)
@@ -132,7 +135,14 @@ class TryOn:
         Thread(target=work, daemon=True).start()
 
     def connect(self):
-        self.run("Đang mở cửa sổ Gemini riêng…", "login", lambda: self.google.start(show_login=True))
+        try:
+            self.google.start()
+        except WorkspaceError as error:
+            self.status.set(str(error))
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.google.code)
+        self.status.set("Đã sao chép mã. Mở extension Gemini Thử Đồ trong Chrome, dán mã và bấm Kết nối.")
 
     def read_prompt(self):
         text = self.prompt.get("1.0", "end-1c").strip()
@@ -192,9 +202,7 @@ class TryOn:
                     return
             else:
                 self.set_busy(False)
-                if kind == "login":
-                    self.status.set("Đăng nhập trên trang Gemini trong cửa sổ vừa mở, rồi quay lại app.")
-                elif kind == "error":
+                if kind == "error":
                     self.status.set(value)
                 elif kind == "prompt":
                     self.prompt.delete("1.0", "end")
@@ -214,10 +222,22 @@ class TryOn:
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--self-test"]:
-        result = subprocess.run([str(runtime_directory() / "node.exe"), str(runtime_directory() / "gemini.mjs")],
-                                input="{}", encoding="utf-8", capture_output=True, timeout=20)
-        if result.returncode != 1 or '"error"' not in result.stdout:
-            raise RuntimeError("Gemini runtime did not initialize")
+        from tempfile import TemporaryDirectory
+        from urllib.request import Request, urlopen
+
+        with TemporaryDirectory() as directory:
+            bridge = GeminiWorkspace(Path(directory), port=0)
+            bridge.start()
+            try:
+                check = Request(
+                    f"http://127.0.0.1:{bridge.server.server_port}/poll",
+                    method="POST", headers={"Authorization": "Bearer " + bridge.code},
+                )
+                with urlopen(check, timeout=5) as response:
+                    if response.status != 200:
+                        raise RuntimeError("Local extension bridge did not initialize.")
+            finally:
+                bridge.close()
     else:
         root = tk.Tk()
         TryOn(root, Path(os.environ.get("LOCALAPPDATA", Path.home())) / "GeminiThuDo")

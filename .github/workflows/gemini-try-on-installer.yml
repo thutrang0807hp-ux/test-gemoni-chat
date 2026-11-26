@@ -24,12 +24,6 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Install Gemini runtime
-        working-directory: gemini-try-on/runtime
-        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Package the app
         shell: pwsh
         run: |
@@ -37,11 +31,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m PyInstaller --noconfirm --onedir --windowed --name Gemini-Thu-Do gemini-try-on/main.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $runtime = 'dist/Gemini-Thu-Do/runtime'
-          New-Item -ItemType Directory -Path $runtime -Force | Out-Null
-          Copy-Item gemini-try-on/runtime/gemini.mjs, gemini-try-on/runtime/package.json $runtime
-          Copy-Item gemini-try-on/runtime/node_modules $runtime -Recurse
-          Copy-Item (Get-Command node.exe).Source $runtime
+          Copy-Item gemini-try-on/extension dist/Gemini-Thu-Do/extension -Recurse
           $check = Start-Process dist/Gemini-Thu-Do/Gemini-Thu-Do.exe -ArgumentList '--self-test' -Wait -PassThru
           if ($check.ExitCode -ne 0) { exit $check.ExitCode }
       - name: Build and test the installer
@@ -59,10 +49,15 @@ jobs:
           if ($setup.ExitCode -ne 0) { exit $setup.ExitCode }
           $app = Start-Process (Join-Path $target 'Gemini-Thu-Do.exe') -ArgumentList '--self-test' -Wait -PassThru
           if ($app.ExitCode -ne 0) { exit $app.ExitCode }
+      - name: Package the Chrome extension
+        shell: pwsh
+        run: Compress-Archive -Path gemini-try-on/extension -DestinationPath try-on-installer/Gemini-Thu-Do-Extension.zip
       - uses: actions/upload-artifact@v4
         with:
           name: Gemini-Thu-Do-Setup
-          path: try-on-installer/Gemini-Thu-Do-Setup.exe
+          path: |
+            try-on-installer/Gemini-Thu-Do-Setup.exe
+            try-on-installer/Gemini-Thu-Do-Extension.zip
           if-no-files-found: error
       - name: Publish independent installer
         if: github.ref == 'refs/heads/main'
@@ -70,10 +65,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view gemini-thu-do-v0.1.0 *> $null
+          gh release view gemini-thu-do-v0.2.0 *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload gemini-thu-do-v0.1.0 try-on-installer/Gemini-Thu-Do-Setup.exe --clobber
+            gh release upload gemini-thu-do-v0.2.0 try-on-installer/Gemini-Thu-Do-Setup.exe try-on-installer/Gemini-Thu-Do-Extension.zip --clobber
           } else {
-            gh release create gemini-thu-do-v0.1.0 try-on-installer/Gemini-Thu-Do-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Thử Đồ 0.1.0" --notes "Bản thử Windows x64 riêng, dùng phiên Gemini Chat qua hồ sơ Chrome riêng."
+            gh release create gemini-thu-do-v0.2.0 try-on-installer/Gemini-Thu-Do-Setup.exe try-on-installer/Gemini-Thu-Do-Extension.zip --target "$env:GITHUB_SHA" --title "Gemini Thử Đồ 0.2.0" --notes "Bản thử Windows x64 riêng, kết nối phiên Gemini Chat qua extension trong Chrome thường dùng."
           }
           exit $LASTEXITCODE
