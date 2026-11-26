@@ -1,158 +1,152 @@
-import base64
-import hmac
 import io
 import json
-import secrets
-import threading
+import os
+import subprocess
+import sys
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from uuid import uuid4
+from tempfile import TemporaryDirectory
 
-from PIL import Image, ImageOps
+from PIL import Image
 
-PORT = 48947
+GEMINI_URL = "https://gemini.google.com/app"
 
 
 class WorkspaceError(Exception):
     pass
 
 
+def runtime_directory():
+    installed = Path(sys.executable).parent / "runtime"
+    return installed if getattr(sys, "frozen", False) else Path(__file__).parent / "runtime"
+
+
+def discover_chrome():
+    locations = ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")
+    for location in locations:
+        if root := os.getenv(location):
+            chrome = Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe"
+            if chrome.is_file():
+                return chrome
+    raise WorkspaceError("Cần cài Chrome trên máy để Studio mở hồ sơ Google riêng.")
+
+
 class GeminiWorkspace:
-    def __init__(self, folder, port=PORT):
+    def __init__(self, folder):
         self.folder = folder
-        self.lock = threading.Lock()
-        self.pending = None
-        self.last_ping = None
-        self.server = None
-        self.port = port
-        key_path = folder / "extension-pairing.txt"
-        try:
-            self.code = key_path.read_text(encoding="ascii").strip()
-        except OSError:
-            self.code = ""
-        if len(self.code) != 24 or any(c not in "0123456789abcdef" for c in self.code):
-            self.code = secrets.token_hex(12)
-            key_path.write_text(self.code, encoding="ascii")
+        self.profile = folder / "google-signin-profile"
+        self.login = None
+        self.browser = None
+        self.port = None
+
+    def open_login(self):
+        if self.login is not None and self.login.poll() is None:
+            raise WorkspaceError("Cửa sổ đăng nhập đang mở. Đăng nhập Gemini xong rồi đóng cửa sổ đó.")
+        if self.browser is not None and self.browser.poll() is None:
+            self.close()
+            if self.browser.poll() is None:
+                raise WorkspaceError("Cửa sổ Gemini của app vẫn đang mở. Hãy đóng cửa sổ đó rồi thử lại.")
+        chrome = discover_chrome()
+        self.profile.mkdir(parents=True, exist_ok=True)
+        # Credentials are entered in ordinary Chrome, before any automation attaches.
+        self.login = subprocess.Popen([
+            str(chrome), f"--user-data-dir={self.profile}", "--no-first-run",
+            "--no-default-browser-check", "--disable-background-mode", "--new-window", GEMINI_URL,
+        ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.port = None
 
     def start(self):
-        if self.server:
-            return
-        workspace = self
-
-        class Handler(BaseHTTPRequestHandler):
-            def setup(self):
-                super().setup()
-                self.connection.settimeout(10)
-
-            def log_message(self, fmt, *args):
+        if self.login is not None and self.login.poll() is None:
+            raise WorkspaceError("Đăng nhập xong hãy đóng cửa sổ đăng nhập trước, rồi bấm Kiểm tra kết nối.")
+        if not self.profile.is_dir():
+            raise WorkspaceError("Bấm Đăng nhập Gemini để kết nối tài khoản trước.")
+        if self.browser is not None and self.browser.poll() is None:
+            if self.port:
+                return
+            raise WorkspaceError("Hồ sơ Gemini của app chưa sẵn sàng. Hãy đóng cửa sổ đó rồi thử lại.")
+        chrome = discover_chrome()
+        metadata = self.profile / "DevToolsActivePort"
+        metadata.unlink(missing_ok=True)
+        self.browser = subprocess.Popen([
+            str(chrome), f"--user-data-dir={self.profile}", "--remote-debugging-address=127.0.0.1",
+            "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check",
+            "--disable-background-mode", "--start-minimized", "about:blank",
+        ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.port = None
+        deadline = time.monotonic() + 18
+        while time.monotonic() < deadline:
+            try:
+                port = int(metadata.read_text().splitlines()[0])
+                if 1024 <= port <= 65535 and self.browser.poll() is None:
+                    self.port = port
+                    return
+            except (OSError, ValueError, IndexError):
                 pass
+            if self.browser.poll() is not None:
+                break
+            time.sleep(0.25)
+        raise WorkspaceError("Không khởi chạy được hồ sơ Chrome riêng. Nếu cửa sổ của Gemini Thử Đồ đang mở từ lần trước, hãy đóng nó rồi thử lại.")
 
-            def reply(self, status, body):
-                data = json.dumps(body).encode()
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(data)))
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(data)
-
-            def do_POST(self):
-                allowed_hosts = {f"127.0.0.1:{workspace.server.server_port}"}
-                origin = self.headers.get("Origin")
-                code = self.headers.get("Authorization", "").encode()
-                if (self.headers.get("Host") not in allowed_hosts
-                    or (origin and not origin.startswith("chrome-extension://"))
-                    or not hmac.compare_digest(code, ("Bearer " + workspace.code).encode())):
-                    self.reply(403, {"error": "Mã kết nối không đúng."})
-                    return
-                if self.path in ("/ping", "/poll"):
-                    with workspace.lock:
-                        workspace.last_ping = time.monotonic()
-                        job = workspace.pending
-                        payload = None
-                        if self.path == "/poll" and job and not job["claimed"]:
-                            job["claimed"] = True
-                            payload = job["payload"]
-                    self.reply(200, {"job": payload})
-                    return
-                if self.path != "/result":
-                    self.reply(404, {})
-                    return
-                try:
-                    length = int(self.headers.get("Content-Length", "0"))
-                    if not 0 < length <= 35_000_000:
-                        raise ValueError()
-                    result = json.loads(self.rfile.read(length))
-                    if not isinstance(result, dict):
-                        raise ValueError()
-                except (ValueError, OSError):
-                    self.reply(400, {"error": "Kết quả không hợp lệ."})
-                    return
-                with workspace.lock:
-                    job = workspace.pending
-                    matched = job and job["claimed"] and result.get("id") == job["payload"]["id"] and not job["done"].is_set()
-                    if matched:
-                        job["result"] = result
-                        job["done"].set()
-                self.reply(200 if matched else 409, {"ok": bool(matched)})
-
+    def request(self, action, **values):
+        runtime = runtime_directory()
+        exe = runtime / "node.exe"
+        command = str(exe) if exe.is_file() else "node"
         try:
-            self.server = ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
-        except OSError as error:
-            raise WorkspaceError("Không mở được kết nối cục bộ. Kiểm tra có app Gemini Thử Đồ khác đang chạy không.") from error
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+            completed = subprocess.run(
+                [command, str(runtime / "gemini.mjs")],
+                input=json.dumps({"port": self.port, "request": {"action": action, **values}}),
+                encoding="utf-8", capture_output=True, timeout=300,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            response = json.loads(completed.stdout)
+        except subprocess.TimeoutExpired as error:
+            raise WorkspaceError("Đã hết thời gian chờ Gemini.") from error
+        except (OSError, ValueError) as error:
+            raise WorkspaceError("Không chạy được bộ kết nối Gemini.") from error
+        if response.get("error") or completed.returncode != 0:
+            raise WorkspaceError(response.get("error") or "Kết nối Gemini không hoàn tất.")
+        return response["result"]
 
     def close(self):
-        if self.server:
-            self.server.shutdown()
-            self.server.server_close()
+        if self.browser and self.browser.poll() is None and self.port:
+            try:
+                self.request("shutdown")
+                self.browser.wait(timeout=5)
+            except (WorkspaceError, subprocess.TimeoutExpired):
+                pass
 
-    def request(self, action, prompt, references=None, timeout=300):
+
+    def verify(self):
         self.start()
-        job = {"payload": {"id": uuid4().hex, "action": action, "prompt": prompt, "references": references},
-               "claimed": False, "done": threading.Event()}
-        with self.lock:
-            if self.last_ping is None or time.monotonic() - self.last_ping > 75:
-                raise WorkspaceError("Chưa thấy extension kết nối. Mở Chrome, mở extension Gemini Thử Đồ và bấm Kết nối.")
-            if self.pending is not None:
-                raise WorkspaceError("Đang có một yêu cầu Gemini chưa hoàn tất.")
-            self.pending = job
-        try:
-            if not job["done"].wait(timeout):
-                raise WorkspaceError("Quá thời gian chờ extension. Kiểm tra Chrome và phiên Gemini rồi thử lại.")
-            result = job["result"]
-            if result.get("error"):
-                raise WorkspaceError(str(result["error"])[:400])
-            return result
-        finally:
-            with self.lock:
-                self.pending = None
+        if not self.request("verify").get("signedIn"):
+            raise WorkspaceError("Gemini chưa nhận phiên đã đăng nhập. Hãy bấm Đăng nhập Gemini và kiểm tra lại.")
 
     def write_prompt(self, prompt):
-        text = self.request("prompt", prompt).get("text", "").strip()
+        self.start()
+        text = self.request("prompt", prompt=prompt).get("text", "").strip()
         if not text:
             raise WorkspaceError("Gemini chưa trả prompt.")
         return text
 
     def create_image(self, prompt, person, garment):
-        references = []
-        for name, source in (("01-nguoi-mau.jpg", person), ("02-bo-do.jpg", garment)):
-            with Image.open(source) as image:
-                if image.width * image.height > 32_000_000:
-                    raise WorkspaceError("Ảnh tham chiếu quá lớn. Hãy chọn ảnh dưới 32 megapixel.")
-                picture = ImageOps.exif_transpose(image).convert("RGB")
-                picture.thumbnail((1800, 1800))
+        self.start()
+        with TemporaryDirectory(dir=self.folder, prefix="gemini-image-") as temp:
+            folder = Path(temp)
+            references = []
+            for name, source in (("01-nguoi-mau.png", person), ("02-bo-do.png", garment)):
+                target = folder / name
+                with Image.open(source) as image:
+                    if image.width * image.height > 24_000_000:
+                        raise WorkspaceError("Ảnh tham chiếu quá lớn. Hãy chọn ảnh dưới 24 megapixel.")
+                    image.convert("RGB").save(target, format="PNG")
+                references.append(str(target))
+            output = folder / "response"
+            result = self.request("image", prompt=prompt, paths=references, output=str(output))
+            if not result.get("saved") or not output.is_file():
+                raise WorkspaceError("Gemini chưa trả ảnh.")
+            with Image.open(output) as image:
+                if image.width * image.height > 24_000_000:
+                    raise WorkspaceError("Ảnh kết quả quá lớn để mở trong app.")
                 buffer = io.BytesIO()
-                picture.save(buffer, format="JPEG", quality=91)
-                references.append({"name": name, "data": base64.b64encode(buffer.getvalue()).decode("ascii")})
-        result = self.request("image", prompt, references)
-        encoded = result.get("image")
-        if not isinstance(encoded, str) or not encoded:
-            raise WorkspaceError("Gemini chưa trả ảnh.")
-        with Image.open(io.BytesIO(base64.b64decode(encoded, validate=True))) as image:
-            if image.width * image.height > 24_000_000:
-                raise WorkspaceError("Ảnh kết quả quá lớn để mở trong app.")
-            output = io.BytesIO()
-            image.convert("RGB").save(output, format="PNG")
-            return output.getvalue()
+                image.convert("RGB").save(buffer, format="PNG")
+                return buffer.getvalue()

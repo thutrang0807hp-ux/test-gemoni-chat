@@ -1,7 +1,7 @@
 ﻿[Setup]
 AppId={{B52CEAB7-27A3-4AEA-AD64-E8B773A91BB4}
 AppName=Gemini Thử Đồ
-AppVersion=0.2.0
+AppVersion=0.3.0
 DefaultDirName={localappdata}\Programs\Gemini Thu Do
 DefaultGroupName=Gemini Thử Đồ
 PrivilegesRequired=lowest
