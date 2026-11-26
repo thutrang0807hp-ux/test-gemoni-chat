@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright-core";
 
@@ -106,23 +106,68 @@ async function downloadImage(context, page, image) {
   return bytes;
 }
 
-async function saveResult(context, page, image, output) {
-  let bytes;
+async function downloadFromGemini(page, answer, image) {
+  await image.element.hover({timeout:5000});
+  const buttonName = /download|tải xuống|tải ảnh/i;
+  const figure = image.element.locator("xpath=ancestor::*[self::generated-image or self::generated-image-container or self::single-image or self::image-generation][1]");
+  const downloadControl = scope => scope.getByRole("button", {name:buttonName})
+    .or(scope.getByRole("link", {name:buttonName})).filter({visible:true});
+  const local = downloadControl(figure);
+  const control = await local.count() ? local : downloadControl(answer);
+  if (await control.count() !== 1) throw new Error("Không xác định được nút tải ảnh của Gemini.");
+
+  const pending = page.waitForEvent("download", {timeout:20000}).catch(() => null);
   try {
-    bytes = await downloadImage(context, page, image);
+    await control.click({timeout:5000});
   } catch {
-    // The browser can display a resource that a second request cannot read.
-    try {
-      const rendered = await image.element.evaluate((element, url) =>
-        element.currentSrc === url && element.complete && element.naturalWidth >= 256 &&
-        element.naturalHeight >= 256, image.url, {timeout:5000});
-      if (!rendered) throw new Error("Ảnh kết quả đã thay đổi.");
-      bytes = await image.element.screenshot({type:"png", timeout:10000, scale:"device"});
-      if (!bytes.length || bytes.length > 24_000_000) throw new Error("Kích thước ảnh không hợp lệ.");
-    } catch {
-      throw new Error("Gemini đã hiện ảnh nhưng app chưa lấy được ảnh. Hãy thử tạo lại.");
-    }
+    // A click can trigger a download before the browser reports a navigation error.
   }
+  const download = await pending;
+  if (!download) throw new Error("Gemini chưa gửi file ảnh tải xuống.");
+  let timeout;
+  try {
+    const path = await Promise.race([
+      download.path(),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("Gemini tải ảnh quá lâu.")), 15000);
+      }),
+    ]);
+    if ((await stat(path)).size > 24_000_000) throw new Error("Ảnh vượt quá 24 MB.");
+    const bytes = await readFile(path);
+    const png = bytes.subarray(0, 8).toString("hex") === "89504e470d0a1a0a";
+    const jpeg = bytes.subarray(0, 3).toString("hex") === "ffd8ff";
+    const webp = bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+    if (!png && !jpeg && !webp) throw new Error("File tải xuống không phải ảnh được hỗ trợ.");
+    return bytes;
+  } finally {
+    clearTimeout(timeout);
+    await download.cancel().catch(() => {});
+    await download.delete().catch(() => {});
+  }
+}
+
+async function copyImagePixels(image) {
+  const data = await image.element.evaluate((element, url) => {
+    const {naturalWidth:width, naturalHeight:height} = element;
+    if (element.currentSrc !== url || width < 256 || height < 256 || width * height > 25_000_000) {
+      throw new Error("Ảnh kết quả không còn sẵn sàng.");
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d").drawImage(element, 0, 0);
+    return canvas.toDataURL("image/png").split(",", 2)[1];
+  }, image.url, {timeout:5000});
+  if (!data || data.length > 32_000_000) throw new Error("Ảnh vượt quá 24 MB.");
+  return Buffer.from(data, "base64");
+}
+
+async function saveResult(context, page, answer, image, output) {
+  const bytes = await downloadFromGemini(page, answer, image).catch(() =>
+    downloadImage(context, page, image)).catch(() =>
+    copyImagePixels(image)).catch(() => {
+    throw new Error("Gemini đã hiện ảnh nhưng app chưa tải được file ảnh. Hãy thử lại.");
+  });
   await writeFile(output, bytes, {flag:"wx"});
 }
 
@@ -155,7 +200,7 @@ async function run(port, request) {
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
       const answer = await submit(page, editor, imageInstruction(request.prompt));
       const image = await waitForImage(answer);
-      await saveResult(context, page, image, request.output);
+      await saveResult(context, page, answer, image, request.output);
       return {saved:true};
     } finally {
       await page.goto("about:blank", {timeout:5000, waitUntil:"commit"}).catch(() => {});

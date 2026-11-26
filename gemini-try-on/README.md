@@ -1,6 +1,6 @@
 # Gemini Tạo Ảnh
 
-App Windows riêng tạo ảnh trực tiếp từ prompt bằng Gemini Chat. [Tải bộ cài 0.4.2](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/gemini-tao-anh-v0.4.2/Gemini-Tao-Anh-Setup.exe).
+App Windows riêng tạo ảnh trực tiếp từ prompt bằng Gemini Chat. [Tải bộ cài 0.4.3](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/gemini-tao-anh-v0.4.3/Gemini-Tao-Anh-Setup.exe).
 
 1. Nếu chưa kết nối, bấm **Đăng nhập Gemini** và đăng nhập Google trong cửa sổ Chrome vừa mở. Đóng cửa sổ đăng nhập rồi bấm **Kiểm tra kết nối**.
 2. Nhập mô tả ảnh. Bạn có thể bấm **Gemini viết lại prompt** để chỉnh mô tả rồi sửa tiếp trong app, hoặc bấm **Tạo ảnh bằng Gemini** ngay.

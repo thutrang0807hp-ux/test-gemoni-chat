@@ -70,10 +70,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view gemini-tao-anh-v0.4.2 *> $null
+          gh release view gemini-tao-anh-v0.4.3 *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload gemini-tao-anh-v0.4.2 try-on-installer/Gemini-Tao-Anh-Setup.exe --clobber
+            gh release upload gemini-tao-anh-v0.4.3 try-on-installer/Gemini-Tao-Anh-Setup.exe --clobber
           } else {
-            gh release create gemini-tao-anh-v0.4.2 try-on-installer/Gemini-Tao-Anh-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.2" --notes "Bản thử Windows x64 riêng, tạo ảnh từ prompt và viết lại prompt trong app."
+            gh release create gemini-tao-anh-v0.4.3 try-on-installer/Gemini-Tao-Anh-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.3" --notes "Bản thử Windows x64 riêng, tạo ảnh từ prompt và viết lại prompt trong app."
           }
           exit $LASTEXITCODE
