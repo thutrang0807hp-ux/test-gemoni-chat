@@ -22,21 +22,6 @@ export function imageInstruction(prompt) {
   return "Hãy tạo và trả về một ảnh mới dựa trên mô tả dưới đây.\n\n" + prompt;
 }
 
-export async function backgroundPage(context) {
-  const page = context.pages().find(item => item.url() === "about:blank");
-  if (!page) throw new Error("Không tìm thấy tab xử lý. Đóng cửa sổ Chrome riêng của app rồi thử lại.");
-  const session = await context.newCDPSession(page);
-  try {
-    const {windowId, bounds} = await session.send("Browser.getWindowForTarget");
-    if (bounds.windowState !== "minimized") {
-      await session.send("Browser.setWindowBounds", {windowId, bounds:{windowState:"minimized"}});
-    }
-  } finally {
-    await session.detach().catch(() => {});
-  }
-  return page;
-}
-
 async function editorFor(page) {
   const editor = page.locator('rich-textarea [contenteditable="true"]:visible, .ql-editor[contenteditable="true"]:visible, [contenteditable="true"][role="textbox"]:visible').first();
   try { await editor.waitFor({state:"visible", timeout: 22000}); }
@@ -129,7 +114,8 @@ async function run(port, request) {
     }
     const context = browser.contexts()[0];
     if (!context) throw new Error("Không tìm thấy hồ sơ Chrome của app.");
-    const page = await backgroundPage(context);
+    const page = context.pages().find(item => item.url() === "about:blank");
+    if (!page) throw new Error("Không tìm thấy tab xử lý nền. Hãy thoát app và mở lại.");
     try {
       await page.goto(gemini + "/app", {waitUntil:"domcontentloaded", timeout:30000});
       if (new URL(page.url()).origin !== gemini) throw new Error("Hãy hoàn tất đăng nhập bằng nút Đăng nhập Gemini.");

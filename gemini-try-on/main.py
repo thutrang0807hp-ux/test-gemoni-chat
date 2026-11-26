@@ -1,7 +1,6 @@
 import io
 import os
 import queue
-import subprocess
 import sys
 import tkinter as tk
 from pathlib import Path
@@ -11,7 +10,7 @@ from tkinter import filedialog, ttk
 import pystray
 from PIL import Image, ImageDraw, ImageTk
 
-from browser_bridge import GeminiWorkspace, WorkspaceError, runtime_directory
+from browser_bridge import GeminiWorkspace, WorkspaceError
 
 TITLE = "Gemini Tạo Ảnh"
 
@@ -197,10 +196,34 @@ class ImageStudio:
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--self-test"]:
-        result = subprocess.run([str(runtime_directory() / "node.exe"), str(runtime_directory() / "gemini.mjs")],
-                                input="{}", encoding="utf-8", capture_output=True, timeout=20)
-        if result.returncode != 1 or '"error"' not in result.stdout:
-            raise RuntimeError("Gemini runtime did not initialize")
+        from ctypes import WINFUNCTYPE, byref, windll
+        from ctypes.wintypes import BOOL, DWORD, HWND, LPARAM
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as directory:
+            workspace = GeminiWorkspace(Path(directory))
+            workspace.profile.mkdir()
+            try:
+                workspace.start()
+                visible = []
+
+                @WINFUNCTYPE(BOOL, HWND, LPARAM)
+                def check_window(hwnd, _):
+                    window_process = DWORD()
+                    windll.user32.GetWindowThreadProcessId(hwnd, byref(window_process))
+                    if window_process.value == workspace.browser.pid and windll.user32.IsWindowVisible(hwnd):
+                        visible.append(hwnd)
+                    return True
+
+                windll.user32.EnumWindows(check_window, 0)
+                if visible:
+                    raise RuntimeError("Processing Chrome exposed a visible window.")
+                workspace.request("shutdown")
+                workspace.browser.wait(timeout=10)
+            finally:
+                if workspace.browser and workspace.browser.poll() is None:
+                    workspace.browser.terminate()
+                    workspace.browser.wait(timeout=5)
     else:
         root = tk.Tk()
         ImageStudio(root, Path(os.environ.get("LOCALAPPDATA", Path.home())) / "GeminiThuDo")

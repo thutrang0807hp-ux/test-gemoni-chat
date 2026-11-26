@@ -6,6 +6,8 @@ import sys
 import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from contextlib import closing
+from http.client import HTTPConnection, HTTPException
 
 from PIL import Image
 
@@ -29,6 +31,25 @@ def discover_chrome():
             if chrome.is_file():
                 return chrome
     raise WorkspaceError("Cần cài Chrome trên máy để Studio mở hồ sơ Google riêng.")
+
+
+def browser_port(metadata):
+    try:
+        port_text, socket_path, *_ = metadata.read_text().splitlines()
+        port = int(port_text)
+        if not 1024 <= port <= 65535 or not socket_path.startswith("/devtools/browser/"):
+            return None
+        with closing(HTTPConnection("127.0.0.1", port, timeout=1)) as connection:
+            connection.request("GET", "/json/version")
+            response = connection.getresponse()
+            if response.status != 200:
+                return None
+            endpoint = json.loads(response.read(8192))["webSocketDebuggerUrl"]
+        if endpoint == f"ws://127.0.0.1:{port}{socket_path}":
+            return port
+    except (OSError, ValueError, KeyError, HTTPException):
+        pass
+    return None
 
 
 class GeminiWorkspace:
@@ -66,27 +87,22 @@ class GeminiWorkspace:
             raise WorkspaceError("Hồ sơ Gemini của app chưa sẵn sàng. Hãy đóng cửa sổ đó rồi thử lại.")
         chrome = discover_chrome()
         metadata = self.profile / "DevToolsActivePort"
+        if browser_port(metadata):
+            raise WorkspaceError("Hồ sơ này còn mở từ bản trước. Hãy thoát app cũ và đóng cửa sổ Chrome riêng của nó.")
         metadata.unlink(missing_ok=True)
-        startup = None
-        if os.name == "nt":
-            startup = subprocess.STARTUPINFO()
-            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startup.wShowWindow = 7  # SW_SHOWMINNOACTIVE
         self.browser = subprocess.Popen([
             str(chrome), f"--user-data-dir={self.profile}", "--remote-debugging-address=127.0.0.1",
-            "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check",
-            "--disable-background-mode", "--start-minimized", "about:blank",
-        ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startup)
+            "--remote-debugging-port=0", "--headless=new", "--no-first-run", "--no-default-browser-check",
+            "--disable-background-mode", "about:blank",
+        ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         self.port = None
         deadline = time.monotonic() + 18
         while time.monotonic() < deadline:
-            try:
-                port = int(metadata.read_text().splitlines()[0])
-                if 1024 <= port <= 65535 and self.browser.poll() is None:
-                    self.port = port
-                    return
-            except (OSError, ValueError, IndexError):
-                pass
+            port = browser_port(metadata)
+            if port and self.browser.poll() is None:
+                self.port = port
+                return
             if self.browser.poll() is not None:
                 break
             time.sleep(0.25)
