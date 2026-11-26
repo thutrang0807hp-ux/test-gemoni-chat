@@ -1,10 +1,9 @@
-# Gemini Thử Đồ
+# Gemini Tạo Ảnh
 
-Ứng dụng Windows riêng để viết prompt thay đồ và thử chỉnh ảnh bằng Gemini Chat. [Tải bộ cài 0.3.0](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/gemini-thu-do-v0.3.0/Gemini-Thu-Do-Setup.exe).
+App Windows riêng tạo ảnh trực tiếp từ prompt bằng Gemini Chat. [Tải bộ cài 0.4.0](https://github.com/thutrang0807hp-ux/test-gemoni-chat/releases/download/gemini-tao-anh-v0.4.0/Gemini-Tao-Anh-Setup.exe).
 
-1. Trong app bấm **Đăng nhập Gemini**. Đăng nhập Google trong cửa sổ Chrome vừa mở, rồi chờ thấy ô nhập Gemini Chat.
-2. Đóng cửa sổ đăng nhập. Trong app bấm **Kiểm tra kết nối** để mở lại hồ sơ và xác minh phiên.
-3. Chọn **ảnh người mẫu** và **ảnh bộ đồ**. Có thể dùng **Gemini viết lại prompt** trước, rồi bấm **Tạo ảnh bằng Gemini**.
-4. Khi có ảnh, bấm **Lưu ảnh**. Có thể bấm X để thu app xuống khay trong lúc xử lý.
+1. Nếu chưa kết nối, bấm **Đăng nhập Gemini** và đăng nhập Google trong cửa sổ Chrome vừa mở. Đóng cửa sổ đăng nhập rồi bấm **Kiểm tra kết nối**.
+2. Nhập mô tả ảnh. Bạn có thể bấm **Gemini viết lại prompt** để chỉnh mô tả rồi sửa tiếp trong app, hoặc bấm **Tạo ảnh bằng Gemini** ngay.
+3. Khi có ảnh, bấm **Lưu ảnh**. Bấm **Tạo ảnh bằng Gemini** lần nữa để tạo ảnh mới bằng prompt hiện tại.
 
-Bản này sử dụng Chrome có sẵn trên máy. Cửa sổ đăng nhập mở bình thường. App chỉ mở kết nối điều khiển cục bộ trong hồ sơ riêng sau khi cửa sổ đăng nhập đã đóng. Chrome của app phải chạy trong lúc xử lý Gemini. Phiên nằm trong hồ sơ riêng tại `%LOCALAPPDATA%\GeminiThuDo\google-signin-profile`. Không cần extension, API key hay chép cookie.
+App xử lý qua tab có sẵn trong cửa sổ Chrome riêng được thu nhỏ. Bạn có thể đóng Chrome thường dùng. Cần giữ tiến trình Chrome riêng của app chạy trong lúc xử lý. Không cần ảnh tham chiếu, extension, API key hoặc chép cookie. Bản cập nhật dùng lại hồ sơ đăng nhập của Gemini Thử Đồ 0.3.0.

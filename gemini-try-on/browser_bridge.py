@@ -67,11 +67,16 @@ class GeminiWorkspace:
         chrome = discover_chrome()
         metadata = self.profile / "DevToolsActivePort"
         metadata.unlink(missing_ok=True)
+        startup = None
+        if os.name == "nt":
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow = 7  # SW_SHOWMINNOACTIVE
         self.browser = subprocess.Popen([
             str(chrome), f"--user-data-dir={self.profile}", "--remote-debugging-address=127.0.0.1",
             "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check",
             "--disable-background-mode", "--start-minimized", "about:blank",
-        ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=startup)
         self.port = None
         deadline = time.monotonic() + 18
         while time.monotonic() < deadline:
@@ -85,7 +90,7 @@ class GeminiWorkspace:
             if self.browser.poll() is not None:
                 break
             time.sleep(0.25)
-        raise WorkspaceError("Không khởi chạy được hồ sơ Chrome riêng. Nếu cửa sổ của Gemini Thử Đồ đang mở từ lần trước, hãy đóng nó rồi thử lại.")
+        raise WorkspaceError("Không khởi chạy được hồ sơ Chrome riêng. Nếu cửa sổ của Gemini Tạo Ảnh đang mở từ lần trước, hãy đóng nó rồi thử lại.")
 
     def request(self, action, **values):
         runtime = runtime_directory()
@@ -128,25 +133,16 @@ class GeminiWorkspace:
             raise WorkspaceError("Gemini chưa trả prompt.")
         return text
 
-    def create_image(self, prompt, person, garment):
+    def create_image(self, prompt):
         self.start()
         with TemporaryDirectory(dir=self.folder, prefix="gemini-image-") as temp:
-            folder = Path(temp)
-            references = []
-            for name, source in (("01-nguoi-mau.png", person), ("02-bo-do.png", garment)):
-                target = folder / name
-                with Image.open(source) as image:
-                    if image.width * image.height > 24_000_000:
-                        raise WorkspaceError("Ảnh tham chiếu quá lớn. Hãy chọn ảnh dưới 24 megapixel.")
-                    image.convert("RGB").save(target, format="PNG")
-                references.append(str(target))
-            output = folder / "response"
-            result = self.request("image", prompt=prompt, paths=references, output=str(output))
+            output = Path(temp) / "response"
+            result = self.request("image", prompt=prompt, output=str(output))
             if not result.get("saved") or not output.is_file():
                 raise WorkspaceError("Gemini chưa trả ảnh.")
             with Image.open(output) as image:
                 if image.width * image.height > 24_000_000:
                     raise WorkspaceError("Ảnh kết quả quá lớn để mở trong app.")
                 buffer = io.BytesIO()
-                image.convert("RGB").save(buffer, format="PNG")
+                image.convert("RGBA" if "A" in image.getbands() else "RGB").save(buffer, format="PNG")
                 return buffer.getvalue()

@@ -18,10 +18,23 @@ export function imageSource(value, identified, width, height) {
     mediaHosts.has(url.hostname) && (identified || /^\/(?:gg|gg-dl|rd-gg)(?:\/|$)/.test(url.pathname));
 }
 
-export function editInstruction(prompt) {
-  return "Chỉnh trực tiếp ảnh tham chiếu 1 (người mẫu) bằng trang phục trong ảnh tham chiếu 2 (bộ đồ). " +
-    "Trả về ảnh mới. Giữ nguyên nhận diện gương mặt, tư thế và nền của ảnh 1 trừ khi mô tả yêu cầu khác. " +
-    "Giữ đúng màu, phom và họa tiết trang phục từ ảnh 2.\n\n" + prompt;
+export function imageInstruction(prompt) {
+  return "Hãy tạo và trả về một ảnh mới dựa trên mô tả dưới đây.\n\n" + prompt;
+}
+
+export async function backgroundPage(context) {
+  const page = context.pages().find(item => item.url() === "about:blank");
+  if (!page) throw new Error("Không tìm thấy tab xử lý. Đóng cửa sổ Chrome riêng của app rồi thử lại.");
+  const session = await context.newCDPSession(page);
+  try {
+    const {windowId, bounds} = await session.send("Browser.getWindowForTarget");
+    if (bounds.windowState !== "minimized") {
+      await session.send("Browser.setWindowBounds", {windowId, bounds:{windowState:"minimized"}});
+    }
+  } finally {
+    await session.detach().catch(() => {});
+  }
+  return page;
 }
 
 async function editorFor(page) {
@@ -53,32 +66,6 @@ async function waitForText(page, answer) {
     await new Promise(resolve => setTimeout(resolve, 400));
   }
   throw new Error("Gemini chưa viết xong prompt.");
-}
-
-async function uploadPair(page, paths) {
-  // Standards-based file inputs or the same upload dialog available to the user.
-  const direct = page.locator('input[type="file"][multiple]').first();
-  if (await direct.count()) {
-    await direct.setInputFiles(paths, {timeout:10000});
-  } else {
-    const attachments = page.getByRole("button", {name:/add files|upload|attach|thêm tệp|tải tệp|đính kèm/i}).first();
-    await attachments.click({timeout:10000});
-    const upload = page.getByRole("menuitem", {name:/upload|tải (tệp|lên)/i})
-      .or(page.getByRole("button", {name:/^upload files$|^tải tệp lên$/i})).first();
-    const [chooser] = await Promise.all([
-      page.waitForEvent("filechooser", {timeout:12000}),
-      upload.click({timeout:12000}),
-    ]);
-    if (!chooser.isMultiple()) throw new Error("Gemini không cho tải hai ảnh cùng lúc trong giao diện này.");
-    await chooser.setFiles(paths);
-  }
-  for (const name of paths.map(path => path.split(/[\\/]/).at(-1))) {
-    const attachment = page.getByText(name, {exact:true})
-      .or(page.getByRole("img", {name, exact:true}))
-      .or(page.getByRole("button", {name:new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")})).first();
-    try { await attachment.waitFor({state:"visible",timeout:22000}); }
-    catch { throw new Error("Gemini chưa xác nhận đủ hai ảnh đính kèm. Studio chưa gửi lệnh tạo."); }
-  }
 }
 
 async function waitForImage(response) {
@@ -142,7 +129,7 @@ async function run(port, request) {
     }
     const context = browser.contexts()[0];
     if (!context) throw new Error("Không tìm thấy hồ sơ Chrome của app.");
-    const page = await context.newPage();
+    const page = await backgroundPage(context);
     try {
       await page.goto(gemini + "/app", {waitUntil:"domcontentloaded", timeout:30000});
       if (new URL(page.url()).origin !== gemini) throw new Error("Hãy hoàn tất đăng nhập bằng nút Đăng nhập Gemini.");
@@ -153,18 +140,17 @@ async function run(port, request) {
       const editor = await editorFor(page);
       if (request.action === "verify") return {signedIn:true};
       if (request.action === "prompt") {
-        const instruction = "Soạn một prompt tiếng Việt để chỉnh ảnh. Ảnh thứ nhất là người mẫu, ảnh thứ hai là bộ đồ. " +
-          "Chỉ trả prompt. Đừng đoán màu sắc, logo hoặc chi tiết chưa cung cấp.\n\n" + request.prompt;
+        const instruction = "Viết lại mô tả dưới đây thành một prompt tạo ảnh chi tiết. Giữ nguyên ngôn ngữ, " +
+          "chủ thể và ý định chính. Mô tả rõ bố cục và ánh sáng nếu phù hợp. Chỉ trả prompt.\n\n" + request.prompt;
         return {text: await waitForText(page, await submit(page, editor, instruction))};
       }
-      if (request.action !== "image" || request.paths?.length !== 2) throw new Error("Cần đúng hai ảnh tham chiếu.");
-      await uploadPair(page, request.paths);
-      const answer = await submit(page, editor, editInstruction(request.prompt));
+      if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
+      const answer = await submit(page, editor, imageInstruction(request.prompt));
       const image = await waitForImage(answer);
       await saveResult(context, page, image, request.output);
       return {saved:true};
     } finally {
-      await page.close().catch(() => {});
+      await page.goto("about:blank", {timeout:5000, waitUntil:"commit"}).catch(() => {});
     }
   } finally {
     await browser.close().catch(() => {});
