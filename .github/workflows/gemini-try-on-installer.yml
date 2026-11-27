@@ -30,10 +30,18 @@ jobs:
       - name: Install Gemini runtime
         working-directory: gemini-try-on/runtime
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test complete reference round trips
+        shell: pwsh
+        run: |
+          $env:CHROMIUM = Join-Path $env:PROGRAMFILES 'Google/Chrome/Application/chrome.exe'
+          node gemini-try-on/tests/roundtrip.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package the app
         shell: pwsh
         run: |
           python -m pip install -r gemini-try-on/requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python gemini-try-on/tests/bridge_multi.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m PyInstaller --noconfirm --onedir --windowed --name Gemini-Thu-Do gemini-try-on/main.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -78,10 +86,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view gemini-tao-anh-v0.4.11 *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload gemini-tao-anh-v0.4.11 try-on-installer/Gemini-Tao-Anh-Setup.exe --clobber
+          $ErrorActionPreference = 'Continue'
+          gh release view gemini-tao-anh-v0.4.12 *> $null
+          $exists = $LASTEXITCODE -eq 0
+          $ErrorActionPreference = 'Stop'
+          if ($exists) {
+            gh release upload gemini-tao-anh-v0.4.12 try-on-installer/Gemini-Tao-Anh-Setup.exe --clobber
           } else {
-            gh release create gemini-tao-anh-v0.4.11 try-on-installer/Gemini-Tao-Anh-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.11" --notes "Bản thử Windows x64 riêng, tạo ảnh từ prompt và viết lại prompt trong app."
+            gh release create gemini-tao-anh-v0.4.12 --verify-tag try-on-installer/Gemini-Tao-Anh-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.12" --notes "Bản thử Windows x64 riêng, tạo ảnh từ prompt và viết lại prompt trong app."
           }
           exit $LASTEXITCODE

@@ -56,6 +56,7 @@ class ImageStudio:
         self.original_picture = None
         self.buttons = []
         self.reference = None
+        self.references = []
         root.title(TITLE)
         root.geometry("940x620")
         root.minsize(760, 550)
@@ -89,7 +90,8 @@ class ImageStudio:
         self.button(text_tab, "Gemini viết lại prompt", self.rewrite).pack(fill="x", pady=(0, 5))
         self.button(text_tab, "Tạo ảnh bằng Gemini", self.generate).pack(fill="x")
 
-        self.button(reference_tab, "Chọn ảnh tham chiếu…", self.choose_reference).pack(anchor="w")
+        self.button(reference_tab, "Thêm ảnh tham chiếu…", self.choose_reference).pack(anchor="w")
+        self.button(reference_tab, "Xóa danh sách ảnh", self.clear_references).pack(anchor="w", pady=(4, 0))
         self.reference_name = tk.StringVar(value="Chưa chọn ảnh")
         ttk.Label(reference_tab, textvariable=self.reference_name, wraplength=260).pack(anchor="w", pady=(4, 8))
         ttk.Label(reference_tab, text="Bạn muốn giữ gì và thay đổi gì?").pack(anchor="w")
@@ -175,8 +177,8 @@ class ImageStudio:
 
     def read_prompt(self, field=None):
         text = (self.prompt if field is None else field).get("1.0", "end-1c").strip()
-        if not 0 < len(text) <= 12000:
-            self.status.set("Hãy nhập prompt từ 1 đến 12.000 ký tự.")
+        if not 0 < len(text) <= 160000:
+            self.status.set("Hãy nhập prompt từ 1 đến 160.000 ký tự.")
             return ""
         return text
 
@@ -189,22 +191,27 @@ class ImageStudio:
             self.run("Gemini đang tạo ảnh từ prompt…", "image", lambda: self.google.create_image(prompt))
 
     def choose_reference(self):
-        path = filedialog.askopenfilename(parent=self.root, filetypes=[("Ảnh", "*.png *.jpg *.jpeg *.webp")])
-        if path:
-            self.reference = Path(path)
-            self.reference_name.set(self.reference.name)
+        paths = filedialog.askopenfilenames(parent=self.root, filetypes=[("Ảnh", "*.png *.jpg *.jpeg *.webp")])
+        for path in paths:
+            if Path(path) not in self.references:
+                self.references.append(Path(path))
+        self.reference_name.set("\n".join(f"Ảnh {i}: {p.name}" for i, p in enumerate(self.references, 1)) or "Chưa chọn ảnh")
+
+    def clear_references(self):
+        self.references.clear()
+        self.reference_name.set("Chưa chọn ảnh")
 
     def generate_from_reference(self, *, diagnose_upload=False):
-        reference = self.reference
-        if reference is None:
+        references = tuple(self.references)
+        if not references:
             self.status.set("Hãy chọn ảnh tham chiếu trước.")
             return
         if diagnose_upload:
             self.run("Đang mở Gemini và thử đính kèm ảnh…", "upload_diagnostic",
-                     lambda: self.google.create_image("", reference=reference, diagnose_upload=True))
+                     lambda: self.google.create_image("", references=references, diagnose_upload=True))
         elif prompt := self.read_prompt(self.reference_prompt):
             self.run("Đang gửi ảnh tham chiếu và prompt tới Gemini…", "image",
-                     lambda: self.google.create_image(prompt, reference=reference))
+                     lambda: self.google.create_image(prompt, references=references))
 
     def clean_image(self):
         original = self.original_picture

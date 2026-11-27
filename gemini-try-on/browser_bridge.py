@@ -122,7 +122,7 @@ class GeminiWorkspace:
                 [command, str(runtime / "gemini.mjs")],
                 input=json.dumps({"port": self.port, "request": {"action": action, **values}}),
                 encoding="utf-8", capture_output=True,
-                timeout=450 if values.get("reference") else 300,
+                timeout=450 if values.get("reference") or values.get("references") else 300,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             response = json.loads(completed.stdout)
@@ -155,12 +155,16 @@ class GeminiWorkspace:
             raise WorkspaceError("Gemini chưa trả prompt.")
         return text
 
-    def create_image(self, prompt, *, reference=None, diagnose_upload=False):
+    def create_image(self, prompt, *, reference=None, references=(), diagnose_upload=False):
         with TemporaryDirectory(dir=self.folder, prefix="gemini-image-") as temp:
             output = Path(temp) / "response"
             values = {"prompt": prompt, "output": str(output)}
+            selected = list(references)
             if reference is not None:
-                attachment = Path(temp) / "reference.jpg"
+                selected.insert(0, reference)
+            attachments = []
+            for index, reference in enumerate(selected, 1):
+                attachment = Path(temp) / f"reference-{index:02d}.jpg"
                 try:
                     with Image.open(reference, formats=["PNG", "JPEG", "WEBP"]) as source:
                         if source.width * source.height > 40_000_000:
@@ -170,7 +174,9 @@ class GeminiWorkspace:
                         image.convert("RGB").save(attachment, quality=92)
                 except (OSError, ValueError, Image.DecompressionBombError) as error:
                     raise WorkspaceError("Không đọc được ảnh tham chiếu. Hãy chọn ảnh PNG, JPG hoặc WebP.") from error
-                values["reference"] = str(attachment)
+                attachments.append(str(attachment))
+            if attachments:
+                values["references"] = attachments
             self.start(visible=diagnose_upload)
             if diagnose_upload:
                 values["diagnoseUpload"] = True

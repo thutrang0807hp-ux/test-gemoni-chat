@@ -30,7 +30,8 @@ async function editorFor(page) {
 }
 
 export async function attachReference(page, path) {
-  const references = [path];
+  const references = Array.isArray(path) ? path : [path];
+  if (!references.length) return;
   let stage = "tìm ô tải ảnh";
   try {
     // Prefer an image picker, never an unrelated audio/video/directory picker.
@@ -302,9 +303,10 @@ async function run(port, request) {
       }
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
       let instruction = imageInstruction(request.prompt);
-      if (request.reference) {
+      const references = request.references || (request.reference ? [request.reference] : []);
+      if (references.length) {
         try {
-          await attachReference(page, request.reference);
+          await attachReference(page, references);
         } catch (error) {
           if (request.diagnoseUpload) {
             throw new Error("Hãy xem cửa sổ Gemini để kiểm tra ảnh xem trước hoặc thông báo lỗi. App chưa gửi prompt.");
