@@ -2,7 +2,7 @@ name: Gemini Try-On installer
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, reference-attachments]
     paths:
       - gemini-try-on/**
       - .github/workflows/gemini-try-on-installer.yml
@@ -30,6 +30,8 @@ jobs:
       - name: Install Gemini runtime
         working-directory: gemini-try-on/runtime
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check runtime syntax
+        run: node --check gemini-try-on/runtime/gemini.mjs
       - name: Package the app
         shell: pwsh
         run: |
@@ -63,25 +65,25 @@ jobs:
           & $compiler gemini-try-on/setup.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $target = Join-Path $env:RUNNER_TEMP 'GeminiThuDoCheck'
-          $setup = Start-Process try-on-installer/Gemini-Tao-Anh-Setup.exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$target`"" -Wait -PassThru
+          $setup = Start-Process try-on-installer/Gemini-Tao-Anh-References-Setup.exe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$target`"" -Wait -PassThru
           if ($setup.ExitCode -ne 0) { exit $setup.ExitCode }
           $app = Start-Process (Join-Path $target 'Gemini-Thu-Do.exe') -ArgumentList '--self-test' -Wait -PassThru
           if ($app.ExitCode -ne 0) { exit $app.ExitCode }
       - uses: actions/upload-artifact@v4
         with:
-          name: Gemini-Tao-Anh-Setup
-          path: try-on-installer/Gemini-Tao-Anh-Setup.exe
+          name: Gemini-Tao-Anh-References-Setup
+          path: try-on-installer/Gemini-Tao-Anh-References-Setup.exe
           if-no-files-found: error
       - name: Publish independent installer
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/reference-attachments'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view gemini-tao-anh-v0.4.4 *> $null
+          gh release view gemini-tao-anh-references-v0.4.5 *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload gemini-tao-anh-v0.4.4 try-on-installer/Gemini-Tao-Anh-Setup.exe --clobber
+            gh release upload gemini-tao-anh-references-v0.4.5 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --clobber
           } else {
-            gh release create gemini-tao-anh-v0.4.4 try-on-installer/Gemini-Tao-Anh-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.4" --notes "Bản thử Windows x64 riêng, tạo ảnh từ prompt và viết lại prompt trong app."
+            gh release create gemini-tao-anh-references-v0.4.5 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.5 — thử ảnh tham chiếu" --notes "Bản thử riêng thêm ảnh tham chiếu. Giữ nguyên các hàm gửi và nhận ảnh của 0.4.4. Chưa xác nhận trên tài khoản Gemini thực. Không thay SceneForge."
           }
           exit $LASTEXITCODE

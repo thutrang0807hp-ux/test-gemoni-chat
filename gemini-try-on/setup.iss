@@ -1,13 +1,13 @@
 ﻿[Setup]
 AppId={{B52CEAB7-27A3-4AEA-AD64-E8B773A91BB4}
 AppName=Gemini Tạo Ảnh
-AppVersion=0.4.4
+AppVersion=0.4.5
 DefaultDirName={localappdata}\Programs\Gemini Thu Do
 DefaultGroupName=Gemini Tạo Ảnh
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 OutputDir=..\try-on-installer
-OutputBaseFilename=Gemini-Tao-Anh-Setup
+OutputBaseFilename=Gemini-Tao-Anh-References-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

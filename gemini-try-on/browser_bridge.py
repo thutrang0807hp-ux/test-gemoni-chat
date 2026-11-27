@@ -149,11 +149,28 @@ class GeminiWorkspace:
             raise WorkspaceError("Gemini chưa trả prompt.")
         return text
 
-    def create_image(self, prompt):
+    def create_image(self, prompt, references=()):
         self.start()
         with TemporaryDirectory(dir=self.folder, prefix="gemini-image-") as temp:
             output = Path(temp) / "response"
-            result = self.request("image", prompt=prompt, output=str(output))
+            # Snapshot exact bytes before contacting Gemini; preserve attachment order.
+            attachments = []
+            for index, source in enumerate(references, 1):
+                source = Path(source)
+                data = source.read_bytes()
+                if not data or len(data) > 20_000_000:
+                    raise WorkspaceError("Mỗi ảnh tham chiếu phải nhỏ hơn 20 MB.")
+                with Image.open(io.BytesIO(data)) as image:
+                    if image.format not in ("PNG", "JPEG", "WEBP"):
+                        raise WorkspaceError("Chỉ nhận ảnh PNG, JPEG hoặc WebP.")
+                    image.verify()
+                target = Path(temp) / f"image-{index:02d}{source.suffix.lower()}"
+                target.write_bytes(data)
+                attachments.append(str(target))
+            values = dict(prompt=prompt, output=str(output))
+            if attachments:
+                values["references"] = attachments
+            result = self.request("image", **values)
             if not result.get("saved") or not output.is_file():
                 raise WorkspaceError("Gemini chưa trả ảnh.")
             with Image.open(output) as image:

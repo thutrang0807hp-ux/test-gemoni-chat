@@ -55,6 +55,7 @@ class ImageStudio:
         self.picture = None
         self.original_picture = None
         self.buttons = []
+        self.references = []
         root.title(TITLE)
         root.geometry("940x620")
         root.minsize(760, 550)
@@ -78,6 +79,13 @@ class ImageStudio:
         ttk.Label(left, text="Mô tả ảnh bạn muốn tạo").pack(anchor="w")
         self.prompt = tk.Text(left, height=8, wrap="word", font=("Segoe UI", 11))
         self.prompt.pack(fill="both", expand=True, pady=(5, 10))
+        ttk.Label(left, text="Ảnh 1: ảnh gốc; ảnh 2 trở đi: tham chiếu theo prompt.").pack(anchor="w")
+        self.reference_list = tk.Listbox(left, height=4, exportselection=False)
+        self.reference_list.pack(fill="x", pady=5)
+        reference_actions = ttk.Frame(left)
+        reference_actions.pack(fill="x", pady=(0, 8))
+        self.button(reference_actions, "Thêm ảnh…", self.add_references).pack(side="left")
+        self.button(reference_actions, "Bỏ ảnh đã chọn", self.remove_reference).pack(side="left", padx=5)
         self.button(left, "Gemini viết lại prompt", self.rewrite).pack(fill="x", pady=(0, 5))
         self.button(left, "Tạo ảnh bằng Gemini", self.generate).pack(fill="x")
 
@@ -156,8 +164,8 @@ class ImageStudio:
 
     def read_prompt(self):
         text = self.prompt.get("1.0", "end-1c").strip()
-        if not 0 < len(text) <= 12000:
-            self.status.set("Hãy nhập prompt từ 1 đến 12.000 ký tự.")
+        if not 0 < len(text) <= 160000:
+            self.status.set("Hãy nhập prompt từ 1 đến 160.000 ký tự.")
             return ""
         return text
 
@@ -165,9 +173,27 @@ class ImageStudio:
         if prompt := self.read_prompt():
             self.run("Gemini đang viết lại prompt…", "prompt", lambda: self.google.write_prompt(prompt))
 
+    def add_references(self):
+        paths = filedialog.askopenfilenames(parent=self.root, filetypes=[("Ảnh", "*.png *.jpg *.jpeg *.webp")])
+        for path in paths:
+            if path not in self.references:
+                self.references.append(path)
+        self.refresh_references()
+
+    def remove_reference(self):
+        for index in reversed(self.reference_list.curselection()):
+            del self.references[index]
+        self.refresh_references()
+
+    def refresh_references(self):
+        self.reference_list.delete(0, "end")
+        for index, path in enumerate(self.references, 1):
+            self.reference_list.insert("end", f"Ảnh {index}: {Path(path).name}")
+
     def generate(self):
         if prompt := self.read_prompt():
-            self.run("Gemini đang tạo ảnh từ prompt…", "image", lambda: self.google.create_image(prompt))
+            references = tuple(self.references)
+            self.run("Gemini đang tạo ảnh từ prompt và ảnh đã chọn…", "image", lambda: self.google.create_image(prompt, references))
 
     def clean_image(self):
         original = self.original_picture

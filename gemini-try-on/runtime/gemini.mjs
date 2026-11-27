@@ -171,6 +171,27 @@ async function saveResult(context, page, answer, image, output) {
   await writeFile(output, bytes, {flag:"wx"});
 }
 
+export async function attachReferences(page, references) {
+  if (!references?.length) return;
+  if (!Array.isArray(references) || references.some(path => typeof path !== "string" || !path)) {
+    throw new Error("Danh sách ảnh tham chiếu không hợp lệ.");
+  }
+  // Gemini exposes a hidden file input; use browser upload rather than DOM events.
+  let input = page.locator('input[type="file"]').first();
+  if (!await input.count()) {
+    await page.getByRole("button", {name:/upload files|add files|thêm tệp|tải tệp|thêm ảnh/i}).first().click({timeout:10000});
+    const computer = page.getByRole("menuitem", {name:/upload files|from computer|tải tệp|máy tính/i}).first();
+    if (await computer.isVisible()) await computer.click({timeout:5000});
+    input = page.locator('input[type="file"]').first();
+  }
+  await input.setInputFiles(references, {timeout:20000});
+  // Wait for real preview DOM, including Gemini's custom uploader components.
+  await page.waitForFunction(count => {
+    const previews = document.querySelectorAll('uploader-file-preview, file-preview, .file-preview, .attachment-preview');
+    return previews.length >= count && !document.querySelector('uploader-file-preview [role="progressbar"], file-preview [role="progressbar"], .upload-progress');
+  }, references.length, {timeout:60000});
+}
+
 async function run(port, request) {
   const browser = await chromium.connectOverCDP("http://127.0.0.1:" + port, {timeout:12000});
   try {
@@ -198,6 +219,7 @@ async function run(port, request) {
         return {text: await waitForText(page, await submit(page, editor, instruction))};
       }
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
+      await attachReferences(page, request.references);
       const answer = await submit(page, editor, imageInstruction(request.prompt));
       const image = await waitForImage(answer);
       await saveResult(context, page, answer, image, request.output);
