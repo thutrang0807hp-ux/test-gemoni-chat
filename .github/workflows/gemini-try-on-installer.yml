@@ -36,12 +36,17 @@ jobs:
         shell: pwsh
         run: |
           $env:CHROMIUM = Join-Path $env:PROGRAMFILES 'Google/Chrome/Application/chrome.exe'
-          node gemini-try-on/tests/attachments.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node gemini-try-on/tests/roundtrip.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node gemini-try-on/tests/diagnostics.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $ErrorActionPreference = 'Continue'
+          foreach ($test in @('attachments.mjs', 'roundtrip.mjs', 'diagnostics.mjs')) {
+            $result = & node "gemini-try-on/tests/$test" 2>&1
+            $code = $LASTEXITCODE
+            $result | ForEach-Object { Write-Host $_ }
+            if ($code -ne 0) {
+              $detail = ($result | Out-String).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Host "::error title=${test}::$detail"
+              exit $code
+            }
+          }
       - name: Check runtime syntax
         run: node --check gemini-try-on/runtime/gemini.mjs
       - name: Package the app
