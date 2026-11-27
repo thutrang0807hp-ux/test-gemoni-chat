@@ -30,6 +30,29 @@ async function editorFor(page) {
 }
 
 async function chooseReference(page, path) {
+  const add = page.locator("button.upload-card-button, button[data-test-id='upload-button'], button[data-test-id='upload-file-button']")
+    .or(page.getByRole("button", {name:/add (?:files|attachments|photos|images)|attach(?:ment| files?)?|upload file menu|đính kèm|thêm (?:tệp|ảnh|tập tin)/i}))
+    .filter({visible:true}).first();
+  const label = /^(?:upload(?: local)? (?:files?|images?|photos?)|upload from (?:your )?(?:device|computer)|(?:tải(?: lên)?|chọn) (?:tệp|tập tin|ảnh)|tải lên từ (?:thiết bị|máy tính))(?: lên)?$/i;
+  const upload = page.getByRole("menuitem", {name:label}).or(page.getByRole("button", {name:label}))
+    .or(page.locator("[data-test-id='local-images-files-uploader-button'], [data-test-id='local-images-files-uploader'], [data-test-id='upload-files-button']"))
+    .filter({visible:true}).first();
+  try {
+    const chooser = page.waitForEvent("filechooser", {timeout:14000}).catch(() => null);
+    await add.click({timeout:3500});
+    const selected = await Promise.race([
+      chooser,
+      upload.waitFor({state:"visible", timeout:5000}).then(() => "menu"),
+    ]);
+    if (selected === "menu") await upload.click({timeout:4000});
+    const file = await chooser;
+    if (file) {
+      await file.setFiles(path, {timeout:8000});
+      return;
+    }
+  } catch {
+    // Some Gemini layouts expose a file input without opening a chooser.
+  }
   const inputs = page.locator('input[type="file"]:not([disabled]):not([webkitdirectory]):not([capture])');
   const compatible = await inputs.evaluateAll(elements => elements.flatMap((input, index) => {
     const types = input.accept.toLowerCase().split(",").map(type => type.trim());
@@ -39,35 +62,27 @@ async function chooseReference(page, path) {
     await inputs.nth(compatible[0]).setInputFiles(path, {timeout:8000});
     return;
   }
-  const add = page.locator("button.upload-card-button, button[data-test-id='upload-button'], button[data-test-id='upload-file-button']")
-    .or(page.getByRole("button", {name:/add (?:files|attachments|photos|images)|attach(?:ment| files?)?|upload file menu|đính kèm|thêm (?:tệp|ảnh|tập tin)/i}))
-    .filter({visible:true}).first();
-  const label = /^(?:upload(?: local)? (?:files?|images?|photos?)|upload from (?:your )?(?:device|computer)|(?:tải(?: lên)?|chọn) (?:tệp|tập tin|ảnh)|tải lên từ (?:thiết bị|máy tính))(?: lên)?$/i;
-  const upload = page.getByRole("menuitem", {name:label}).or(page.getByRole("button", {name:label}))
-    .or(page.locator("[data-test-id='local-images-files-uploader'], [data-test-id='upload-files-button']"))
-    .filter({visible:true}).first();
-  const chooser = page.waitForEvent("filechooser", {timeout:11000}).catch(() => null);
-  await add.click({timeout:4000});
-  const selected = await Promise.race([
-    chooser,
-    upload.waitFor({state:"visible", timeout:5000}).then(() => "menu"),
-  ]);
-  if (selected === "menu") await upload.click({timeout:4000});
-  const file = await chooser;
-  if (!file) throw new Error("Không mở được hộp chọn tệp.");
-  await file.setFiles(path, {timeout:8000});
+  throw new Error("Không mở được hộp chọn tệp.");
 }
 
 export async function attachReference(page, path, editor) {
+  const name = path.split(/[\\/]/).pop();
+  const attached = page.getByRole("button", {
+    name:/remove (?:file|attachment|image)|delete (?:file|attachment|image)|xóa (?:tệp|ảnh|tệp đính kèm)|gỡ (?:bỏ )?(?:tệp|ảnh)/i,
+  }).or(page.locator("uploaded-file-chip, input-area-v2 file-preview, attachment-tray attachment-tile, input-area-v2 [data-test-id*=\"attachment-preview\"], [data-test-id='uploaded-file-chip'], [data-test-id='attachment-thumbnail']"))
+    .or(page.getByText(name, {exact:true}))
+    .or(page.locator("input-area-v2 img, rich-textarea img").filter({visible:true}).and(page.locator("img[src^='blob:'], img[src^='data:image/']")))
+    .filter({visible:true}).first();
   try {
     await chooseReference(page, path);
+    await attached.waitFor({state:"visible", timeout:20000});
+    return;
   } catch {
-    // Gemini also accepts images pasted directly into its message editor.
+    // Start from a fresh composer so a late upload cannot duplicate the image.
     try {
-      await page.keyboard.press("Escape");
+      await page.reload({waitUntil:"domcontentloaded", timeout:20000});
+      await editor.focus({timeout:10000});
       const base64 = (await readFile(path)).toString("base64");
-      const name = path.split(/[\\/]/).pop();
-      await editor.focus({timeout:5000});
       await editor.evaluate((element, {base64, name}) => {
         const image = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
         const clipboard = new DataTransfer();
@@ -76,22 +91,10 @@ export async function attachReference(page, path, editor) {
           clipboardData:clipboard, bubbles:true, cancelable:true, composed:true,
         }));
       }, {base64, name}, {timeout:5000});
+      await attached.waitFor({state:"visible", timeout:20000});
     } catch {
-      throw new Error("App không mở được chỗ tải ảnh và không dán được ảnh vào Gemini.");
+      throw new Error("Đã thử tải và dán ảnh nhưng Gemini chưa hiện ảnh đính kèm. Prompt chưa được gửi.");
     }
-  }
-
-  const name = path.split(/[\\/]/).pop();
-  const attached = page.getByRole("button", {
-    name:/remove (?:file|attachment|image)|delete (?:file|attachment|image)|xóa (?:tệp|ảnh|tệp đính kèm)|gỡ (?:bỏ )?(?:tệp|ảnh)/i,
-  }).or(page.locator("uploaded-file-chip, input-area-v2 file-preview, [data-test-id='uploaded-file-chip'], [data-test-id='attachment-thumbnail']"))
-    .or(page.getByText(name, {exact:true}))
-    .or(page.locator("input-area-v2 img, rich-textarea img").filter({visible:true}).and(page.locator("img[src^='blob:'], img[src^='data:image/']")))
-    .filter({visible:true}).first();
-  try {
-    await attached.waitFor({state:"visible", timeout:20000});
-  } catch {
-    throw new Error("App đã chọn file nhưng Gemini chưa hiện ảnh đính kèm. Prompt chưa được gửi.");
   }
 }
 
