@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageTk
 
 from browser_bridge import GeminiWorkspace, WorkspaceError, runtime_directory
 
-TITLE = "Gemini Tạo Ảnh"
+TITLE = "Gemini Tạo Ảnh - Thử tham chiếu"
 
 
 def remove_watermark(data):
@@ -304,5 +304,5 @@ if __name__ == "__main__":
                     workspace.browser.wait(timeout=5)
     else:
         root = tk.Tk()
-        ImageStudio(root, Path(os.environ.get("LOCALAPPDATA", Path.home())) / "GeminiThuDo")
+        ImageStudio(root, Path(os.environ.get("LOCALAPPDATA", Path.home())) / "GeminiReferencesTest")
         root.mainloop()

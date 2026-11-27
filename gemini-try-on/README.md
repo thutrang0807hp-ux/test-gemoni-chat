@@ -1,6 +1,6 @@
 # Bản thử 0.4.5 — ảnh tham chiếu
 
-Bản thử độc lập trên nhánh `reference-attachments`. Không sửa SceneForge và không thay release 0.4.4.
+Bản thử độc lập trên nhánh `reference-attachments`. Không sửa SceneForge và không thay release 0.4.4. Cài vào thư mục riêng, dùng hồ sơ riêng; cần đăng nhập một lần trong bản thử.
 
 1. Đăng nhập như bản 0.4.4 rồi kiểm tra kết nối.
 2. Thêm ảnh: ảnh gốc trước, ảnh sản phẩm/người/trang phục/bối cảnh sau. Danh sách hiển thị đúng thứ tự gửi.
