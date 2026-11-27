@@ -65,35 +65,40 @@ async function chooseReference(page, path) {
   throw new Error("Không mở được hộp chọn tệp.");
 }
 
-export async function attachReference(page, path, editor) {
+export async function attachReference(page, path) {
   const name = path.split(/[\\/]/).pop();
-  const attached = page.getByRole("button", {
-    name:/remove (?:file|attachment|image)|delete (?:file|attachment|image)|xóa (?:tệp|ảnh|tệp đính kèm)|gỡ (?:bỏ )?(?:tệp|ảnh)/i,
-  }).or(page.locator("uploaded-file-chip, input-area-v2 file-preview, attachment-tray attachment-tile, input-area-v2 [data-test-id*=\"attachment-preview\"], [data-test-id='uploaded-file-chip'], [data-test-id='attachment-thumbnail']"))
+  const input = page.locator('input[type="file"]:not([disabled]):not([webkitdirectory]):not([capture])').first();
+  const add = page.getByRole("button", {
+    name:/upload file menu|add files|attach files|thêm tệp|đính kèm/i,
+  }).or(page.locator("button.upload-card-button")).filter({visible:true}).first();
+  const preview = page.locator("file-preview, uploader-file-preview, [class*='file-preview'], [data-test-id*='file-preview'], uploaded-file-chip, attachment-tray attachment-tile")
+    .or(page.locator("input-area-v2 img[src^='blob:'], rich-textarea img[src^='blob:']"))
     .or(page.getByText(name, {exact:true}))
-    .or(page.locator("input-area-v2 img, rich-textarea img").filter({visible:true}).and(page.locator("img[src^='blob:'], img[src^='data:image/']")))
+    .or(page.locator('[title="reference.jpg"], [aria-label="reference.jpg"], img[alt="reference.jpg"]'))
     .filter({visible:true}).first();
+
   try {
-    await chooseReference(page, path);
-    await attached.waitFor({state:"visible", timeout:20000});
-    return;
+    if (!await input.count()) {
+      await add.click({timeout:4000});
+      await input.waitFor({state:"attached", timeout:5000});
+    }
+    const base64 = (await readFile(path)).toString("base64");
+    await input.evaluate((element, {base64, name}) => {
+      const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([bytes], name, {type:"image/jpeg"}));
+      element.files = transfer.files;
+      element.dispatchEvent(new Event("change", {bubbles:true}));
+    }, {base64, name}, {timeout:5000});
+    await preview.waitFor({state:"visible", timeout:30000});
   } catch {
-    // Start from a fresh composer so a late upload cannot duplicate the image.
+    // Start from a fresh composer before retrying with the browser's picker.
     try {
       await page.reload({waitUntil:"domcontentloaded", timeout:20000});
-      await editor.focus({timeout:10000});
-      const base64 = (await readFile(path)).toString("base64");
-      await editor.evaluate((element, {base64, name}) => {
-        const image = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
-        const clipboard = new DataTransfer();
-        clipboard.items.add(new File([image], name, {type:"image/jpeg"}));
-        element.dispatchEvent(new ClipboardEvent("paste", {
-          clipboardData:clipboard, bubbles:true, cancelable:true, composed:true,
-        }));
-      }, {base64, name}, {timeout:5000});
-      await attached.waitFor({state:"visible", timeout:20000});
+      await chooseReference(page, path);
+      await preview.waitFor({state:"visible", timeout:30000});
     } catch {
-      throw new Error("Đã thử tải và dán ảnh nhưng Gemini chưa hiện ảnh đính kèm. Prompt chưa được gửi.");
+      throw new Error("Gemini chưa hiện ảnh xem trước sau khi đính kèm. App chưa gửi prompt.");
     }
   }
 }
@@ -269,7 +274,7 @@ async function run(port, request) {
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
       let instruction = imageInstruction(request.prompt);
       if (request.reference) {
-        await attachReference(page, request.reference, editor);
+        await attachReference(page, request.reference);
         instruction = "Hãy tạo một ảnh mới dựa trên ảnh tham chiếu đính kèm. Giữ các đặc điểm nhận diện của chủ thể trong ảnh, trừ những phần mà mô tả yêu cầu thay đổi. Trả về ảnh theo yêu cầu sau.\n\n" + request.prompt;
       }
       const answer = await submit(page, editor, instruction);

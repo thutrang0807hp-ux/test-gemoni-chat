@@ -117,7 +117,7 @@ class GeminiWorkspace:
                 [command, str(runtime / "gemini.mjs")],
                 input=json.dumps({"port": self.port, "request": {"action": action, **values}}),
                 encoding="utf-8", capture_output=True,
-                timeout=420 if values.get("reference") else 300,
+                timeout=450 if values.get("reference") else 300,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             response = json.loads(completed.stdout)
