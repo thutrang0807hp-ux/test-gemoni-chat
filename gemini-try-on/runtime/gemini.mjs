@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { basename } from "node:path";
 import { chromium } from "playwright-core";
 
 const gemini = "https://gemini.google.com";
@@ -172,24 +173,75 @@ async function saveResult(context, page, answer, image, output) {
 }
 
 export async function attachReferences(page, references) {
-  if (!references?.length) return;
+  if (references == null) return;
   if (!Array.isArray(references) || references.some(path => typeof path !== "string" || !path)) {
     throw new Error("Danh sách ảnh tham chiếu không hợp lệ.");
   }
-  // Gemini exposes a hidden file input; use browser upload rather than DOM events.
-  let input = page.locator('input[type="file"]').first();
-  if (!await input.count()) {
+  if (!references.length) return;
+  // Prefer an image picker, never an unrelated audio/video/directory picker.
+  const findInput = async () => {
+    const inputs = page.locator('input[type="file"]');
+    const index = await inputs.evaluateAll(nodes => nodes.map((node, index) => {
+      const accept = node.accept.toLowerCase();
+      const image = !accept || accept === "*/*" || /image|\.png|\.jpe?g|\.webp/.test(accept);
+      return {index, score: !node.disabled && !node.webkitdirectory && image ?
+        (accept.includes("image") ? 20 : 10) + (node.multiple ? 5 : 0) : -1};
+    }).filter(item => item.score >= 0).sort((a, b) => b.score - a.score)[0]?.index ?? -1);
+    return index < 0 ? null : inputs.nth(index);
+  };
+  let input = await findInput();
+  if (!input) {
     await page.getByRole("button", {name:/upload files|add files|thêm tệp|tải tệp|thêm ảnh/i}).first().click({timeout:10000});
     const computer = page.getByRole("menuitem", {name:/upload files|from computer|tải tệp|máy tính/i}).first();
     if (await computer.isVisible()) await computer.click({timeout:5000});
-    input = page.locator('input[type="file"]').first();
+    input = await findInput();
   }
-  await input.setInputFiles(references, {timeout:20000});
-  // Wait for real preview DOM, including Gemini's custom uploader components.
-  await page.waitForFunction(count => {
-    const previews = document.querySelectorAll('uploader-file-preview, file-preview, .file-preview, .attachment-preview');
-    return previews.length >= count && !document.querySelector('uploader-file-preview [role="progressbar"], file-preview [role="progressbar"], .upload-progress');
-  }, references.length, {timeout:60000});
+  if (!input) throw new Error("Không tìm thấy ô tải ảnh của Gemini; chưa gửi prompt.");
+  const before = await page.locator("img").evaluateAll(nodes => nodes.map(node => node.currentSrc || node.src));
+  const previewSelector = 'uploader-file-preview, file-preview, .file-preview, .attachment-preview';
+  const previousPreviews = await page.locator(previewSelector).count();
+  const pending = new Set();
+  let lastUpload = 0;
+  let uploadFailed = false;
+  const started = request => {
+    if (/upload|content-push/i.test(request.url()) && !["GET", "OPTIONS"].includes(request.method())) {
+      pending.add(request); lastUpload = Date.now();
+    }
+  };
+  const finished = request => { if (pending.delete(request)) lastUpload = Date.now(); };
+  const failed = request => { if (pending.has(request)) uploadFailed = true; finished(request); };
+  const response = response => { if (pending.has(response.request()) && response.status() >= 400) uploadFailed = true; };
+  page.on("request", started);
+  page.on("response", response);
+  page.on("requestfinished", finished);
+  page.on("requestfailed", failed);
+  try {
+    await input.setInputFiles(references, {timeout:20000});
+    lastUpload = Date.now();
+    // Accept real thumbnails or visible file names too. Gemini component names
+    // vary; hidden progress elements must not keep a completed upload blocked.
+    await page.waitForFunction(({before, names, previewSelector, previousPreviews}) => {
+      const visible = node => Boolean(node.getClientRects().length) && getComputedStyle(node).visibility !== "hidden";
+      const progress = [...document.querySelectorAll('[role="progressbar"], .upload-progress')].some(visible);
+      const previews = [...document.querySelectorAll(previewSelector)].filter(visible).length;
+      const thumbnails = [...document.images].filter(image =>
+        visible(image) && image.complete && image.naturalWidth > 0 && !before.includes(image.currentSrc || image.src)).length;
+      const text = document.body.innerText;
+      const named = names.every(name => text.includes(name));
+      return !progress && (previews >= previousPreviews + names.length || thumbnails >= names.length || named);
+    }, {before, names:references.map(path => basename(path)), previewSelector, previousPreviews}, {timeout:60000});
+    const deadline = Date.now() + 60000;
+    while (pending.size || (lastUpload && Date.now() - lastUpload < 750)) {
+      if (Date.now() > deadline) throw new Error("Ảnh tham chiếu chưa tải xong; chưa gửi prompt.");
+      await page.waitForTimeout(150);
+    }
+    if (uploadFailed) throw new Error("Gemini từ chối tải ảnh tham chiếu; chưa gửi prompt.");
+  } finally {
+    page.off("request", started);
+    page.off("response", response);
+    page.off("requestfinished", finished);
+    page.off("requestfailed", failed);
+  }
 }
 
 export function failureMessage(error, stage) {

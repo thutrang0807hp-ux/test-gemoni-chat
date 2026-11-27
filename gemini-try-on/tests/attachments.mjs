@@ -23,7 +23,7 @@ try {
   const page = await browser.newPage();
   await attachReferences(page, undefined); // original no-attachment path touches nothing
   for (let turn=0; turn<3; turn++) {
-    await page.setContent(`<input type="file" multiple><div id="previews"></div><script>
+    await page.setContent(`<style>uploader-file-preview {display:block; width:20px; height:20px}</style><input type="file" multiple><div id="previews"></div><script>
       document.querySelector('input').onchange = async event => {
         window.files = await Promise.all([...event.target.files].map(async f => ({name:f.name, bytes:[...new Uint8Array(await f.arrayBuffer())]})));
         document.querySelector('#previews').innerHTML = window.files.map(() => '<uploader-file-preview></uploader-file-preview>').join('');
@@ -35,6 +35,20 @@ try {
     assert.equal(files.length, 2);
     for (let i=0; i<2; i++) assert.deepEqual(files[i].bytes, [...readFileSync(paths[i])]);
   }
+  await page.setContent(`<input type="file" multiple><div id="previews"></div><script>
+    document.querySelector('input').onchange = event => {
+      document.querySelector('#previews').innerText = [...event.target.files].map(file => file.name).join(' ');
+    };
+  </script>`);
+  const previous = execFileSync('git', ['show', '3273e62:gemini-try-on/runtime/gemini.mjs'], {encoding:'utf8'});
+  const oldSource = previous.slice(previous.indexOf('export async function attachReferences'), previous.indexOf('export function failureMessage')).replace('export ', '');
+  const oldAttach = Function('return (' + oldSource + ')')();
+  const wait = page.waitForFunction.bind(page);
+  page.waitForFunction = (fn, arg, options) => wait(fn, arg, {...options, timeout:800});
+  await assert.rejects(oldAttach(page, paths), /Timeout/);
+  page.waitForFunction = wait;
+  await attachReferences(page, paths);
+  console.log('PASS: previous uploader times out on filename chips; replacement succeeds on the same page');
   await assert.rejects(attachReferences(page, [null]), /không hợp lệ/);
   await assert.rejects(attachReferences(page, ['/nonexistent/image.png']));
   console.log('PASS: original 10 helpers unchanged; no-reference path; 3 ordered binary uploads; invalid/missing files rejected');

@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -30,6 +32,16 @@ jobs:
       - name: Install Gemini runtime
         working-directory: gemini-try-on/runtime
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Browser regression tests
+        shell: pwsh
+        run: |
+          $env:CHROMIUM = Join-Path $env:PROGRAMFILES 'Google/Chrome/Application/chrome.exe'
+          node gemini-try-on/tests/attachments.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node gemini-try-on/tests/roundtrip.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node gemini-try-on/tests/diagnostics.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check runtime syntax
         run: node --check gemini-try-on/runtime/gemini.mjs
       - name: Package the app
@@ -85,12 +97,12 @@ jobs:
           # A missing release is expected on first publication. PowerShell's
           # default Stop preference must not abort before the create branch.
           $ErrorActionPreference = 'Continue'
-          gh release view gemini-tao-anh-references-v0.4.6 *> $null
+          gh release view gemini-tao-anh-references-v0.4.7 *> $null
           $exists = $LASTEXITCODE -eq 0
           $ErrorActionPreference = 'Stop'
           if ($exists) {
-            gh release upload gemini-tao-anh-references-v0.4.6 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --clobber
+            gh release upload gemini-tao-anh-references-v0.4.7 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --clobber
           } else {
-            gh release create gemini-tao-anh-references-v0.4.6 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.6 — chẩn đoán timeout" --notes "Hiển thị bước lỗi và thêm nút Xem lỗi Gemini để mở ảnh chụp tại thời điểm lỗi. Không tự gửi lại. Chưa xác nhận đã sửa nguyên nhân tạo ảnh trên tài khoản thực. Không thay SceneForge."
+            gh release create gemini-tao-anh-references-v0.4.7 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.7 — sửa tải ảnh tham chiếu" --notes "Sửa chọn nhầm ô tải file, nhận diện preview và chờ upload. Kiểm tra cả viết prompt, tạo ảnh không tham chiếu, tạo ảnh có tham chiếu, nhận và lưu ảnh; giữ các hàm gửi/nhận nguyên bản. Chưa kiểm chứng bằng tài khoản Gemini thực. Không thay SceneForge."
           }
           exit $LASTEXITCODE

@@ -1,3 +1,13 @@
+# 0.4.7 — sửa bước tải ảnh tham chiếu
+
+- Chọn ô nhận ảnh, bỏ qua ô nhận âm thanh/video hoặc thư mục.
+- Nhận diện ảnh thu nhỏ và tên tệp thay vì bắt buộc một tên component cố định.
+- Thanh tiến độ đã ẩn không chặn gửi prompt. Chờ các request upload kết thúc; nếu upload bị từ chối, không gửi prompt thiếu ảnh.
+- Các hàm viết/gửi prompt, nhận và tải ảnh của repo gốc giữ nguyên.
+- Kiểm tra hồi quy tái hiện uploader 0.4.6 timeout, trong khi uploader mới vượt qua trên cùng trang mô phỏng.
+- Kiểm tra trọn luồng CDP: kết nối, viết prompt, bốn lượt tạo/lưu ảnh có và không có tham chiếu, đúng thứ tự và nội dung file; upload lỗi không gửi prompt.
+- Các kiểm tra dùng trình duyệt thật và trang Gemini mô phỏng, không phải tài khoản Gemini thực. Chưa khẳng định đã xử lý mọi lỗi trên tài khoản thực.
+
 # 0.4.6 — xác định lỗi hết thời gian chờ
 
 Bản này bổ sung chẩn đoán, chưa khẳng định đã sửa nguyên nhân tạo ảnh trên tài khoản thực.
