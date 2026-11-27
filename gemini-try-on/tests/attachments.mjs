@@ -8,7 +8,7 @@ import {attachReferences} from '../runtime/gemini.mjs';
 
 // Prove that the original sender and all image-result helpers are unchanged.
 const original = execFileSync('git', ['show', '75f43c93a5670acc65ce1411ffb2ea298db348f0:gemini-try-on/runtime/gemini.mjs'], {encoding:'utf8'});
-const updated = readFileSync(new URL('../runtime/gemini.mjs', import.meta.url), 'utf8');
+const updated = readFileSync(new URL('../runtime/gemini.mjs', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
 for (const name of ['imageSource','imageInstruction','editorFor','submit','waitForText','waitForImage','downloadImage','downloadFromGemini','copyImagePixels','saveResult']) {
   const extract = text => text.match(new RegExp('(?:export )?(?:async )?function '+name+'\\([^]*?\\n}'))?.[0];
   assert.ok(extract(original), name);
