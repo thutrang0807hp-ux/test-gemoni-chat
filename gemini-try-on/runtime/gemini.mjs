@@ -30,29 +30,50 @@ async function editorFor(page) {
 }
 
 export async function attachReference(page, path) {
+  const inputs = page.locator('input[type="file"]:not([disabled]):not([webkitdirectory]):not([capture])');
+  const compatible = await inputs.evaluateAll(elements => elements.flatMap((input, index) => {
+    const types = input.accept.toLowerCase().split(",").map(type => type.trim());
+    return !input.accept || types.some(type => /^(image\/(?:\*|jpe?g)|\.jpe?g|\*\/\*)$/.test(type)) ? [index] : [];
+  }));
   const add = page.getByRole("button", {
-    name:/^add files(?: and (?:photos|images))?$|upload files|upload file menu|đính kèm|thêm (?:tệp|ảnh|tập tin)|tải tệp lên/i,
-  }).or(page.locator("button.upload-card-button, button[data-test-id='upload-button']")).filter({visible:true}).first();
-  const uploadName = /upload files|upload from (?:your )?(?:device|computer)|tải tệp lên|tải lên từ (?:thiết bị|máy tính)/i;
+    name:/add (?:files|attachments|photos|images)|attach(?:ment| files?)?|upload (?:files|file menu)|đính kèm|thêm (?:tệp|ảnh|tập tin)|tải tệp lên/i,
+  }).or(page.locator("button.upload-card-button, button[data-test-id='upload-button'], button[data-test-id='upload-file-button']"))
+    .filter({visible:true}).first();
+  const uploadName = /upload(?: local)? (?:files?|images?|photos?)|upload from (?:your )?(?:device|computer)|(?:tải|tải lên|chọn) (?:tệp|tập tin|ảnh)|tải lên từ (?:thiết bị|máy tính)/i;
   const upload = page.getByRole("menuitem", {name:uploadName})
-    .or(page.getByRole("button", {name:uploadName})).filter({visible:true}).first();
+    .or(page.locator("[role='menu'] button").filter({hasText:uploadName}))
+    .or(page.locator("[data-test-id='local-images-files-uploader'], [data-test-id='upload-files-button']"))
+    .filter({visible:true}).first();
   try {
-    const chooser = page.waitForEvent("filechooser", {timeout:10000}).catch(() => null);
-    await add.click({timeout:5000});
-    const selected = await Promise.race([
-      chooser,
-      upload.waitFor({state:"visible", timeout:5000}).then(() => "menu").catch(() => null),
-    ]);
-    if (selected === "menu") await upload.click({timeout:5000});
-    const file = await chooser;
-    if (!file) throw new Error("Không mở được hộp chọn tệp.");
-    await file.setFiles(path, {timeout:8000});
-    const attached = page.getByRole("button", {name:/remove (?:file|attachment|image)|delete (?:file|attachment|image)|xóa (?:tệp|ảnh|tệp đính kèm)/i})
-      .or(page.locator("uploaded-file-chip, [data-test-id='uploaded-file-chip']"))
-      .or(page.locator("img[alt*='reference.jpg']")).filter({visible:true}).first();
-    await attached.waitFor({state:"visible", timeout:12000});
+    if (compatible.length === 1) {
+      await inputs.nth(compatible[0]).setInputFiles(path, {timeout:8000});
+    } else {
+      const chooser = page.waitForEvent("filechooser", {timeout:15000}).catch(() => null);
+      await add.click({timeout:5000});
+      const selected = await Promise.race([
+        chooser,
+        upload.waitFor({state:"visible", timeout:6000}).then(() => "menu").catch(() => null),
+      ]);
+      if (selected === "menu") await upload.click({timeout:5000});
+      const file = await chooser;
+      if (!file) throw new Error("Không mở được hộp chọn tệp.");
+      await file.setFiles(path, {timeout:8000});
+    }
   } catch {
-    throw new Error("Gemini chưa nhận ảnh tham chiếu. Hãy thử lại hoặc kiểm tra chức năng đính kèm trong Gemini.");
+    throw new Error("App không tìm được chỗ tải ảnh lên trong ô chat Gemini.");
+  }
+
+  const name = path.split(/[\\/]/).pop();
+  const attached = page.getByRole("button", {
+    name:/remove (?:file|attachment|image)|delete (?:file|attachment|image)|xóa (?:tệp|ảnh|tệp đính kèm)|gỡ (?:bỏ )?(?:tệp|ảnh)/i,
+  }).or(page.locator("uploaded-file-chip, input-area-v2 file-preview, [data-test-id='uploaded-file-chip'], [data-test-id='attachment-thumbnail']"))
+    .or(page.getByText(name, {exact:true}))
+    .or(page.locator("input-area-v2 img, rich-textarea img").filter({visible:true}).and(page.locator("img[src^='blob:'], img[src^='data:image/']")))
+    .filter({visible:true}).first();
+  try {
+    await attached.waitFor({state:"visible", timeout:20000});
+  } catch {
+    throw new Error("App đã chọn file nhưng Gemini chưa hiện ảnh đính kèm. Prompt chưa được gửi.");
   }
 }
 
