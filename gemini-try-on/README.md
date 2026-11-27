@@ -1,3 +1,13 @@
+# 0.4.8 — sửa lỗi bấm nút mở đính kèm
+
+Bản này sửa nhánh `locator.click: Timeout 10000ms` khi chưa mở được nút đính kèm:
+
+- Nhận nhãn `Open upload file menu` và nút dấu cộng có biểu tượng `add`.
+- Phân biệt nút mở menu với mục `Upload files` / `Tải tệp lên` từ máy tính.
+- Lắng nghe filechooser trước thao tác bấm; hỗ trợ input file chỉ được tạo sau khi mở menu hoặc hộp chọn file mở trực tiếp.
+- Tách thông báo từng bước mở nút, chọn tải từ máy tính, chuyển file và chờ upload.
+- Kiểm tra trọn lượt viết prompt và sáu lượt tạo/lưu ảnh bao gồm các kiểu menu/hộp chọn file trên. Vẫn là kiểm tra bằng trang mô phỏng, chưa xác nhận trên tài khoản Gemini thực.
+
 # 0.4.7 — sửa bước tải ảnh tham chiếu
 
 - Chọn ô nhận ảnh, bỏ qua ô nhận âm thanh/video hoặc thư mục.

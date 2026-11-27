@@ -172,7 +172,7 @@ async function saveResult(context, page, answer, image, output) {
   await writeFile(output, bytes, {flag:"wx"});
 }
 
-export async function attachReferences(page, references) {
+export async function attachReferences(page, references, stage = async () => {}) {
   if (references == null) return;
   if (!Array.isArray(references) || references.some(path => typeof path !== "string" || !path)) {
     throw new Error("Danh sách ảnh tham chiếu không hợp lệ.");
@@ -191,10 +191,37 @@ export async function attachReferences(page, references) {
   };
   let input = await findInput();
   if (!input) {
-    await page.getByRole("button", {name:/upload files|add files|thêm tệp|tải tệp|thêm ảnh/i}).first().click({timeout:10000});
-    const computer = page.getByRole("menuitem", {name:/upload files|from computer|tải tệp|máy tính/i}).first();
-    if (await computer.isVisible()) await computer.click({timeout:5000});
-    input = await findInput();
+    let chooser;
+    const opened = value => { chooser = value; };
+    // Subscribe before clicking: some versions open the OS chooser directly,
+    // others create a file input only after the local-upload menu item is used.
+    page.on("filechooser", opened);
+    try {
+      await stage("mở nút đính kèm của Gemini");
+      const named = page.getByRole("button", {name:/upload|attach|add (?:files?|photos?|images?)|open.*file|tải.*(?:tệp|ảnh)|(?:thêm|đính kèm).*(?:tệp|ảnh)/i}).filter({visible:true});
+      const icons = page.locator('mat-icon, .google-symbols, .material-symbols-outlined, .material-icons').filter({hasText:/^(add|attach_file|upload_file|add_circle|add_2)$/});
+      const iconButton = page.getByRole("button").filter({has:icons}).filter({visible:true});
+      const opener = await named.count() ? named.first() : iconButton.first();
+      await opener.click({timeout:10000});
+      input = await findInput();
+      if (!input && !chooser) {
+        await stage("chọn tải ảnh từ máy tính");
+        const label = /^(upload files?|upload from (?:computer|device)|from computer|tải (?:tệp|ảnh)(?: lên)?|tải lên từ (?:máy tính|thiết bị)|(?:chọn|tải) (?:tệp|ảnh) từ máy tính)$/i;
+        const item = page.getByRole("menuitem", {name:label}).or(page.getByRole("button", {name:label})).filter({visible:true}).first();
+        await item.click({timeout:10000});
+      }
+      const deadline = Date.now() + 10000;
+      while (!input && !chooser && Date.now() < deadline) {
+        input = await findInput();
+        if (!input && !chooser) await page.waitForTimeout(100);
+      }
+      if (chooser) {
+        const selected = chooser;
+        input = {setInputFiles:(files, options) => selected.setFiles(files, options)};
+      }
+    } finally {
+      page.off("filechooser", opened);
+    }
   }
   if (!input) throw new Error("Không tìm thấy ô tải ảnh của Gemini; chưa gửi prompt.");
   const before = await page.locator("img").evaluateAll(nodes => nodes.map(node => node.currentSrc || node.src));
@@ -216,7 +243,9 @@ export async function attachReferences(page, references) {
   page.on("requestfinished", finished);
   page.on("requestfailed", failed);
   try {
+    await stage("chuyển file ảnh tham chiếu vào Gemini");
     await input.setInputFiles(references, {timeout:20000});
+    await stage("chờ ảnh tham chiếu tải xong");
     lastUpload = Date.now();
     // Accept real thumbnails or visible file names too. Gemini component names
     // vary; hidden progress elements must not keep a completed upload blocked.
@@ -295,7 +324,7 @@ export async function run(port, request) {
       }
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
       await record(request.references?.length ? "đính kèm và chờ ảnh tham chiếu tải xong" : "chuẩn bị prompt");
-      await attachReferences(page, request.references);
+      await attachReferences(page, request.references, record);
       await record("điền prompt và bấm Gửi");
       const answer = await submit(page, editor, imageInstruction(request.prompt));
       await record("chờ ảnh kết quả của Gemini");
