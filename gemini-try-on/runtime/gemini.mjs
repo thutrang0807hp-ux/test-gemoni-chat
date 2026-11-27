@@ -274,7 +274,15 @@ async function run(port, request) {
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
       let instruction = imageInstruction(request.prompt);
       if (request.reference) {
-        await attachReference(page, request.reference);
+        try {
+          await attachReference(page, request.reference);
+        } catch (error) {
+          if (request.diagnoseUpload) {
+            throw new Error("Hãy xem cửa sổ Gemini để kiểm tra ảnh xem trước hoặc thông báo lỗi. App chưa gửi prompt.");
+          }
+          throw error;
+        }
+        if (request.diagnoseUpload) return {attached:true};
         instruction = "Hãy tạo một ảnh mới dựa trên ảnh tham chiếu đính kèm. Giữ các đặc điểm nhận diện của chủ thể trong ảnh, trừ những phần mà mô tả yêu cầu thay đổi. Trả về ảnh theo yêu cầu sau.\n\n" + request.prompt;
       }
       const answer = await submit(page, editor, instruction);
@@ -282,7 +290,9 @@ async function run(port, request) {
       await saveResult(context, page, answer, image, request.output);
       return {saved:true};
     } finally {
-      await page.goto("about:blank", {timeout:5000, waitUntil:"commit"}).catch(() => {});
+      if (!request.diagnoseUpload) {
+        await page.goto("about:blank", {timeout:5000, waitUntil:"commit"}).catch(() => {});
+      }
     }
   } finally {
     await browser.close().catch(() => {});

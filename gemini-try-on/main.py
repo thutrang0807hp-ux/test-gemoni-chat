@@ -96,6 +96,8 @@ class ImageStudio:
         self.reference_prompt = tk.Text(reference_tab, height=6, wrap="word", font=("Segoe UI", 11))
         self.reference_prompt.pack(fill="both", expand=True, pady=(5, 10))
         self.button(reference_tab, "Tạo ảnh theo tham chiếu", self.generate_from_reference).pack(fill="x")
+        self.button(reference_tab, "Mở Gemini để xem lỗi đính kèm",
+                    lambda: self.generate_from_reference(diagnose_upload=True)).pack(fill="x", pady=(5, 0))
 
         self.preview = ttk.Label(right, anchor="center", text="Ảnh Gemini tạo sẽ hiện ở đây.")
         self.preview.pack(fill="both", expand=True)
@@ -192,12 +194,15 @@ class ImageStudio:
             self.reference = Path(path)
             self.reference_name.set(self.reference.name)
 
-    def generate_from_reference(self):
+    def generate_from_reference(self, *, diagnose_upload=False):
         reference = self.reference
         if reference is None:
             self.status.set("Hãy chọn ảnh tham chiếu trước.")
             return
-        if prompt := self.read_prompt(self.reference_prompt):
+        if diagnose_upload:
+            self.run("Đang mở Gemini và thử đính kèm ảnh…", "upload_diagnostic",
+                     lambda: self.google.create_image("", reference=reference, diagnose_upload=True))
+        elif prompt := self.read_prompt(self.reference_prompt):
             self.run("Đang gửi ảnh tham chiếu và prompt tới Gemini…", "image",
                      lambda: self.google.create_image(prompt, reference=reference))
 
@@ -262,6 +267,8 @@ class ImageStudio:
                     else:
                         self.show_image(value, original=False)
                         self.status.set("Đã xử lý dấu sao. Bấm Lưu ảnh để lưu bản đã xử lý.")
+                elif kind == "upload_diagnostic":
+                    self.status.set("App thấy ảnh đã đính kèm. Hãy xem cửa sổ Gemini. Chưa gửi prompt.")
                 elif kind == "image":
                     self.show_image(value)
                     try:
