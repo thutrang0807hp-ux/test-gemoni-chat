@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from contextlib import closing
 from http.client import HTTPConnection, HTTPException
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 GEMINI_URL = "https://gemini.google.com/app"
 
@@ -149,11 +149,24 @@ class GeminiWorkspace:
             raise WorkspaceError("Gemini chưa trả prompt.")
         return text
 
-    def create_image(self, prompt):
-        self.start()
+    def create_image(self, prompt, *, reference=None):
         with TemporaryDirectory(dir=self.folder, prefix="gemini-image-") as temp:
             output = Path(temp) / "response"
-            result = self.request("image", prompt=prompt, output=str(output))
+            values = {"prompt": prompt, "output": str(output)}
+            if reference is not None:
+                attachment = Path(temp) / "reference.jpg"
+                try:
+                    with Image.open(reference, formats=["PNG", "JPEG", "WEBP"]) as source:
+                        if source.width * source.height > 40_000_000:
+                            raise WorkspaceError("Ảnh tham chiếu quá lớn. Hãy chọn ảnh dưới 40 megapixel.")
+                        image = ImageOps.exif_transpose(source)
+                        image.thumbnail((2048, 2048))
+                        image.convert("RGB").save(attachment, quality=92)
+                except (OSError, ValueError, Image.DecompressionBombError) as error:
+                    raise WorkspaceError("Không đọc được ảnh tham chiếu. Hãy chọn ảnh PNG, JPG hoặc WebP.") from error
+                values["reference"] = str(attachment)
+            self.start()
+            result = self.request("image", **values)
             if not result.get("saved") or not output.is_file():
                 raise WorkspaceError("Gemini chưa trả ảnh.")
             with Image.open(output) as image:

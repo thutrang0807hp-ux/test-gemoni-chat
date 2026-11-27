@@ -55,6 +55,7 @@ class ImageStudio:
         self.picture = None
         self.original_picture = None
         self.buttons = []
+        self.reference = None
         root.title(TITLE)
         root.geometry("940x620")
         root.minsize(760, 550)
@@ -75,11 +76,26 @@ class ImageStudio:
         right = ttk.LabelFrame(panels, text=" Kết quả Gemini ", padding=12)
         right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
-        ttk.Label(left, text="Mô tả ảnh bạn muốn tạo").pack(anchor="w")
-        self.prompt = tk.Text(left, height=8, wrap="word", font=("Segoe UI", 11))
+        tabs = ttk.Notebook(left)
+        tabs.pack(fill="both", expand=True)
+        text_tab = ttk.Frame(tabs, padding=8)
+        reference_tab = ttk.Frame(tabs, padding=8)
+        tabs.add(text_tab, text="Từ prompt")
+        tabs.add(reference_tab, text="Ảnh tham chiếu")
+
+        ttk.Label(text_tab, text="Mô tả ảnh bạn muốn tạo").pack(anchor="w")
+        self.prompt = tk.Text(text_tab, height=8, wrap="word", font=("Segoe UI", 11))
         self.prompt.pack(fill="both", expand=True, pady=(5, 10))
-        self.button(left, "Gemini viết lại prompt", self.rewrite).pack(fill="x", pady=(0, 5))
-        self.button(left, "Tạo ảnh bằng Gemini", self.generate).pack(fill="x")
+        self.button(text_tab, "Gemini viết lại prompt", self.rewrite).pack(fill="x", pady=(0, 5))
+        self.button(text_tab, "Tạo ảnh bằng Gemini", self.generate).pack(fill="x")
+
+        self.button(reference_tab, "Chọn ảnh tham chiếu…", self.choose_reference).pack(anchor="w")
+        self.reference_name = tk.StringVar(value="Chưa chọn ảnh")
+        ttk.Label(reference_tab, textvariable=self.reference_name, wraplength=260).pack(anchor="w", pady=(4, 8))
+        ttk.Label(reference_tab, text="Bạn muốn giữ gì và thay đổi gì?").pack(anchor="w")
+        self.reference_prompt = tk.Text(reference_tab, height=6, wrap="word", font=("Segoe UI", 11))
+        self.reference_prompt.pack(fill="both", expand=True, pady=(5, 10))
+        self.button(reference_tab, "Tạo ảnh theo tham chiếu", self.generate_from_reference).pack(fill="x")
 
         self.preview = ttk.Label(right, anchor="center", text="Ảnh Gemini tạo sẽ hiện ở đây.")
         self.preview.pack(fill="both", expand=True)
@@ -126,6 +142,7 @@ class ImageStudio:
         for button in self.buttons:
             button.configure(state="disabled" if value else "normal")
         self.prompt.configure(state="disabled" if value else "normal")
+        self.reference_prompt.configure(state="disabled" if value else "normal")
         self.watermark_button.configure(
             state="normal" if not value and self.original_picture is not None else "disabled"
         )
@@ -154,8 +171,8 @@ class ImageStudio:
     def verify(self):
         self.run("Đang kiểm tra phiên Gemini đã lưu…", "verified", self.google.verify)
 
-    def read_prompt(self):
-        text = self.prompt.get("1.0", "end-1c").strip()
+    def read_prompt(self, field=None):
+        text = (self.prompt if field is None else field).get("1.0", "end-1c").strip()
         if not 0 < len(text) <= 12000:
             self.status.set("Hãy nhập prompt từ 1 đến 12.000 ký tự.")
             return ""
@@ -168,6 +185,21 @@ class ImageStudio:
     def generate(self):
         if prompt := self.read_prompt():
             self.run("Gemini đang tạo ảnh từ prompt…", "image", lambda: self.google.create_image(prompt))
+
+    def choose_reference(self):
+        path = filedialog.askopenfilename(parent=self.root, filetypes=[("Ảnh", "*.png *.jpg *.jpeg *.webp")])
+        if path:
+            self.reference = Path(path)
+            self.reference_name.set(self.reference.name)
+
+    def generate_from_reference(self):
+        reference = self.reference
+        if reference is None:
+            self.status.set("Hãy chọn ảnh tham chiếu trước.")
+            return
+        if prompt := self.read_prompt(self.reference_prompt):
+            self.run("Đang gửi ảnh tham chiếu và prompt tới Gemini…", "image",
+                     lambda: self.google.create_image(prompt, reference=reference))
 
     def clean_image(self):
         original = self.original_picture

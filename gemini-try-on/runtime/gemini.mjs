@@ -29,6 +29,33 @@ async function editorFor(page) {
   return editor;
 }
 
+export async function attachReference(page, path) {
+  const add = page.getByRole("button", {
+    name:/^add files(?: and (?:photos|images))?$|upload files|upload file menu|đính kèm|thêm (?:tệp|ảnh|tập tin)|tải tệp lên/i,
+  }).or(page.locator("button.upload-card-button, button[data-test-id='upload-button']")).filter({visible:true}).first();
+  const uploadName = /upload files|upload from (?:your )?(?:device|computer)|tải tệp lên|tải lên từ (?:thiết bị|máy tính)/i;
+  const upload = page.getByRole("menuitem", {name:uploadName})
+    .or(page.getByRole("button", {name:uploadName})).filter({visible:true}).first();
+  try {
+    const chooser = page.waitForEvent("filechooser", {timeout:10000}).catch(() => null);
+    await add.click({timeout:5000});
+    const selected = await Promise.race([
+      chooser,
+      upload.waitFor({state:"visible", timeout:5000}).then(() => "menu").catch(() => null),
+    ]);
+    if (selected === "menu") await upload.click({timeout:5000});
+    const file = await chooser;
+    if (!file) throw new Error("Không mở được hộp chọn tệp.");
+    await file.setFiles(path, {timeout:8000});
+    const attached = page.getByRole("button", {name:/remove (?:file|attachment|image)|delete (?:file|attachment|image)|xóa (?:tệp|ảnh|tệp đính kèm)/i})
+      .or(page.locator("uploaded-file-chip, [data-test-id='uploaded-file-chip']"))
+      .or(page.locator("img[alt*='reference.jpg']")).filter({visible:true}).first();
+    await attached.waitFor({state:"visible", timeout:12000});
+  } catch {
+    throw new Error("Gemini chưa nhận ảnh tham chiếu. Hãy thử lại hoặc kiểm tra chức năng đính kèm trong Gemini.");
+  }
+}
+
 async function submit(page, editor, prompt) {
   const count = await page.locator(responses).count();
   await editor.fill(prompt);
@@ -198,7 +225,12 @@ async function run(port, request) {
         return {text: await waitForText(page, await submit(page, editor, instruction))};
       }
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
-      const answer = await submit(page, editor, imageInstruction(request.prompt));
+      let instruction = imageInstruction(request.prompt);
+      if (request.reference) {
+        await attachReference(page, request.reference);
+        instruction = "Hãy tạo một ảnh mới dựa trên ảnh tham chiếu đính kèm. Giữ các đặc điểm nhận diện của chủ thể trong ảnh, trừ những phần mà mô tả yêu cầu thay đổi. Trả về ảnh theo yêu cầu sau.\n\n" + request.prompt;
+      }
+      const answer = await submit(page, editor, instruction);
       const image = await waitForImage(answer);
       await saveResult(context, page, answer, image, request.output);
       return {saved:true};
