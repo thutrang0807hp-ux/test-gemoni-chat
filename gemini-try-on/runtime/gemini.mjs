@@ -29,38 +29,56 @@ async function editorFor(page) {
   return editor;
 }
 
-export async function attachReference(page, path) {
+async function chooseReference(page, path) {
   const inputs = page.locator('input[type="file"]:not([disabled]):not([webkitdirectory]):not([capture])');
   const compatible = await inputs.evaluateAll(elements => elements.flatMap((input, index) => {
     const types = input.accept.toLowerCase().split(",").map(type => type.trim());
     return !input.accept || types.some(type => /^(image\/(?:\*|jpe?g)|\.jpe?g|\*\/\*)$/.test(type)) ? [index] : [];
   }));
-  const add = page.getByRole("button", {
-    name:/add (?:files|attachments|photos|images)|attach(?:ment| files?)?|upload (?:files|file menu)|đính kèm|thêm (?:tệp|ảnh|tập tin)|tải tệp lên/i,
-  }).or(page.locator("button.upload-card-button, button[data-test-id='upload-button'], button[data-test-id='upload-file-button']"))
+  if (compatible.length === 1) {
+    await inputs.nth(compatible[0]).setInputFiles(path, {timeout:8000});
+    return;
+  }
+  const add = page.locator("button.upload-card-button, button[data-test-id='upload-button'], button[data-test-id='upload-file-button']")
+    .or(page.getByRole("button", {name:/add (?:files|attachments|photos|images)|attach(?:ment| files?)?|upload file menu|đính kèm|thêm (?:tệp|ảnh|tập tin)/i}))
     .filter({visible:true}).first();
-  const uploadName = /upload(?: local)? (?:files?|images?|photos?)|upload from (?:your )?(?:device|computer)|(?:tải|tải lên|chọn) (?:tệp|tập tin|ảnh)|tải lên từ (?:thiết bị|máy tính)/i;
-  const upload = page.getByRole("menuitem", {name:uploadName})
-    .or(page.locator("[role='menu'] button").filter({hasText:uploadName}))
+  const label = /^(?:upload(?: local)? (?:files?|images?|photos?)|upload from (?:your )?(?:device|computer)|(?:tải(?: lên)?|chọn) (?:tệp|tập tin|ảnh)|tải lên từ (?:thiết bị|máy tính))(?: lên)?$/i;
+  const upload = page.getByRole("menuitem", {name:label}).or(page.getByRole("button", {name:label}))
     .or(page.locator("[data-test-id='local-images-files-uploader'], [data-test-id='upload-files-button']"))
     .filter({visible:true}).first();
+  const chooser = page.waitForEvent("filechooser", {timeout:11000}).catch(() => null);
+  await add.click({timeout:4000});
+  const selected = await Promise.race([
+    chooser,
+    upload.waitFor({state:"visible", timeout:5000}).then(() => "menu"),
+  ]);
+  if (selected === "menu") await upload.click({timeout:4000});
+  const file = await chooser;
+  if (!file) throw new Error("Không mở được hộp chọn tệp.");
+  await file.setFiles(path, {timeout:8000});
+}
+
+export async function attachReference(page, path, editor) {
   try {
-    if (compatible.length === 1) {
-      await inputs.nth(compatible[0]).setInputFiles(path, {timeout:8000});
-    } else {
-      const chooser = page.waitForEvent("filechooser", {timeout:15000}).catch(() => null);
-      await add.click({timeout:5000});
-      const selected = await Promise.race([
-        chooser,
-        upload.waitFor({state:"visible", timeout:6000}).then(() => "menu").catch(() => null),
-      ]);
-      if (selected === "menu") await upload.click({timeout:5000});
-      const file = await chooser;
-      if (!file) throw new Error("Không mở được hộp chọn tệp.");
-      await file.setFiles(path, {timeout:8000});
-    }
+    await chooseReference(page, path);
   } catch {
-    throw new Error("App không tìm được chỗ tải ảnh lên trong ô chat Gemini.");
+    // Gemini also accepts images pasted directly into its message editor.
+    try {
+      await page.keyboard.press("Escape");
+      const base64 = (await readFile(path)).toString("base64");
+      const name = path.split(/[\\/]/).pop();
+      await editor.focus({timeout:5000});
+      await editor.evaluate((element, {base64, name}) => {
+        const image = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
+        const clipboard = new DataTransfer();
+        clipboard.items.add(new File([image], name, {type:"image/jpeg"}));
+        element.dispatchEvent(new ClipboardEvent("paste", {
+          clipboardData:clipboard, bubbles:true, cancelable:true, composed:true,
+        }));
+      }, {base64, name}, {timeout:5000});
+    } catch {
+      throw new Error("App không mở được chỗ tải ảnh và không dán được ảnh vào Gemini.");
+    }
   }
 
   const name = path.split(/[\\/]/).pop();
@@ -248,7 +266,7 @@ async function run(port, request) {
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
       let instruction = imageInstruction(request.prompt);
       if (request.reference) {
-        await attachReference(page, request.reference);
+        await attachReference(page, request.reference, editor);
         instruction = "Hãy tạo một ảnh mới dựa trên ảnh tham chiếu đính kèm. Giữ các đặc điểm nhận diện của chủ thể trong ảnh, trừ những phần mà mô tả yêu cầu thay đổi. Trả về ảnh theo yêu cầu sau.\n\n" + request.prompt;
       }
       const answer = await submit(page, editor, instruction);
