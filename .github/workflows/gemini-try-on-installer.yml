@@ -82,8 +82,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A missing release is expected on first publication. PowerShell's
+          # default Stop preference must not abort before the create branch.
+          $ErrorActionPreference = 'Continue'
           gh release view gemini-tao-anh-references-v0.4.5 *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $exists = $LASTEXITCODE -eq 0
+          $ErrorActionPreference = 'Stop'
+          if ($exists) {
             gh release upload gemini-tao-anh-references-v0.4.5 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --clobber
           } else {
             gh release create gemini-tao-anh-references-v0.4.5 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.5 — thử ảnh tham chiếu" --notes "Bản thử riêng thêm ảnh tham chiếu. Giữ nguyên các hàm gửi và nhận ảnh của 0.4.4. Chưa xác nhận trên tài khoản Gemini thực. Không thay SceneForge."
