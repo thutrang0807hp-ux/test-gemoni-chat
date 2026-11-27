@@ -64,6 +64,7 @@ class ImageStudio:
         heading = ttk.Frame(root, padding=(20, 16))
         heading.pack(fill="x")
         ttk.Label(heading, text=TITLE, font=("Segoe UI", 23, "bold")).pack(side="left")
+        self.button(heading, "Xem lỗi Gemini", self.show_diagnostics).pack(side="right", padx=6)
         self.button(heading, "Kiểm tra kết nối", self.verify).pack(side="right")
         self.button(heading, "Đăng nhập Gemini", self.connect).pack(side="right", padx=6)
 
@@ -155,6 +156,13 @@ class ImageStudio:
                 self.events.put(("error", "Lượt xử lý chưa hoàn tất. Hãy kiểm tra cửa sổ Gemini của app."))
 
         Thread(target=work, daemon=True).start()
+
+    def show_diagnostics(self):
+        path = self.data / "diagnostics" / "last-error.png"
+        if path.is_file():
+            os.startfile(str(path))
+        else:
+            self.status.set("Chưa có ảnh chụp lỗi. Tạo ảnh một lượt để ghi lại bước bị kẹt.")
 
     def connect(self):
         self.run("Đang mở cửa sổ đăng nhập…", "login", self.google.open_login)

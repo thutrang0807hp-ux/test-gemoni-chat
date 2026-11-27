@@ -3,6 +3,9 @@ from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+import json
+import subprocess
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from browser_bridge import GeminiWorkspace, WorkspaceError
@@ -40,6 +43,16 @@ class ReferenceBridgeTest(unittest.TestCase):
                 self.assertEqual(Image.open(io.BytesIO(result)).getpixel((0, 0)), (0, 128, 0))
             self.assertNotIn('references', calls[0])
             self.assertTrue(all(not Path(p).exists() for p in calls[-1]['references']))
+
+    def test_process_timeout_preserves_last_recorded_stage(self):
+        with TemporaryDirectory() as folder:
+            workspace = GeminiWorkspace(Path(folder))
+            directory = Path(folder) / "diagnostics"
+            directory.mkdir()
+            (directory / "status.json").write_text(json.dumps({"stage": "chờ ảnh kết quả của Gemini"}))
+            with patch("browser_bridge.subprocess.run", side_effect=subprocess.TimeoutExpired("node", 300)):
+                with self.assertRaisesRegex(WorkspaceError, "Bước cuối: chờ ảnh kết quả của Gemini"):
+                    workspace.request("image", prompt="private prompt")
 
     def test_invalid_image_never_submitted(self):
         with TemporaryDirectory() as folder:

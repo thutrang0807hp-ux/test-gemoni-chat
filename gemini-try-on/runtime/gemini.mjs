@@ -192,8 +192,26 @@ export async function attachReferences(page, references) {
   }, references.length, {timeout:60000});
 }
 
-async function run(port, request) {
-  const browser = await chromium.connectOverCDP("http://127.0.0.1:" + port, {timeout:12000});
+export function failureMessage(error, stage) {
+  const detail = String(error.message || error).split("\n")[0].slice(0, 240);
+  return `Bước lỗi: ${stage}. ${detail}`;
+}
+
+export async function run(port, request) {
+  let stage = "kết nối Chrome nền";
+  const record = async value => {
+    stage = value;
+    if (request.diagnostics) {
+      await writeFile(request.diagnostics + "/status.json", JSON.stringify({stage, at:new Date().toISOString()})).catch(() => {});
+    }
+  };
+  await record(stage);
+  let browser;
+  try {
+    browser = await chromium.connectOverCDP("http://127.0.0.1:" + port, {timeout:12000});
+  } catch (error) {
+    throw new Error(failureMessage(error, stage));
+  }
   try {
     if (request.action === "shutdown") {
       const session = await browser.newBrowserCDPSession();
@@ -205,28 +223,45 @@ async function run(port, request) {
     const page = context.pages().find(item => item.url() === "about:blank");
     if (!page) throw new Error("Không tìm thấy tab xử lý nền. Hãy thoát app và mở lại.");
     try {
+      await record("mở trang Gemini");
       await page.goto(gemini + "/app", {waitUntil:"domcontentloaded", timeout:30000});
       if (new URL(page.url()).origin !== gemini) throw new Error("Hãy hoàn tất đăng nhập bằng nút Đăng nhập Gemini.");
       const cookies = await context.cookies(gemini + "/app");
       if (!cookies.some(({name}) => name === "__Secure-1PSID")) {
         throw new Error("Chưa thấy phiên Google đã đăng nhập trong hồ sơ Gemini của app.");
       }
+      await record("tìm ô nhập prompt");
       const editor = await editorFor(page);
       if (request.action === "verify") return {signedIn:true};
       if (request.action === "prompt") {
         const instruction = "Viết lại mô tả dưới đây thành một prompt tạo ảnh chi tiết. Giữ nguyên ngôn ngữ, " +
           "chủ thể và ý định chính. Mô tả rõ bố cục và ánh sáng nếu phù hợp. Chỉ trả prompt.\n\n" + request.prompt;
-        return {text: await waitForText(page, await submit(page, editor, instruction))};
+        await record("gửi yêu cầu viết prompt");
+        const answer = await submit(page, editor, instruction);
+        await record("chờ Gemini viết prompt");
+        return {text: await waitForText(page, answer)};
       }
       if (request.action !== "image") throw new Error("Yêu cầu Gemini không hợp lệ.");
+      await record(request.references?.length ? "đính kèm và chờ ảnh tham chiếu tải xong" : "chuẩn bị prompt");
       await attachReferences(page, request.references);
+      await record("điền prompt và bấm Gửi");
       const answer = await submit(page, editor, imageInstruction(request.prompt));
+      await record("chờ ảnh kết quả của Gemini");
       const image = await waitForImage(answer);
+      await record("tải ảnh kết quả về máy");
       await saveResult(context, page, answer, image, request.output);
+      await record("đã lưu ảnh kết quả");
       return {saved:true};
+    } catch (error) {
+      if (request.diagnostics) {
+        await page.screenshot({path:request.diagnostics + "/last-error.png", timeout:5000}).catch(() => {});
+      }
+      throw error;
     } finally {
       await page.goto("about:blank", {timeout:5000, waitUntil:"commit"}).catch(() => {});
     }
+  } catch (error) {
+    throw new Error(failureMessage(error, stage));
   } finally {
     await browser.close().catch(() => {});
   }
@@ -238,8 +273,8 @@ async function main() {
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Chrome chưa sẵn sàng.");
     process.stdout.write(JSON.stringify({result:await run(port, request)}));
   } catch (error) {
-    const message = error.name === "TimeoutError" ? "Hết thời gian chờ Gemini." : error.message;
-    process.stdout.write(JSON.stringify({error:message.split("\n")[0].slice(0,300)}));
+    const message = error.message;
+    process.stdout.write(JSON.stringify({error:message.split("\n")[0].slice(0,600)}));
     process.exitCode = 1;
   }
 }

@@ -85,12 +85,12 @@ jobs:
           # A missing release is expected on first publication. PowerShell's
           # default Stop preference must not abort before the create branch.
           $ErrorActionPreference = 'Continue'
-          gh release view gemini-tao-anh-references-v0.4.5 *> $null
+          gh release view gemini-tao-anh-references-v0.4.6 *> $null
           $exists = $LASTEXITCODE -eq 0
           $ErrorActionPreference = 'Stop'
           if ($exists) {
-            gh release upload gemini-tao-anh-references-v0.4.5 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --clobber
+            gh release upload gemini-tao-anh-references-v0.4.6 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --clobber
           } else {
-            gh release create gemini-tao-anh-references-v0.4.5 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.5 — thử ảnh tham chiếu" --notes "Bản thử riêng thêm ảnh tham chiếu. Giữ nguyên các hàm gửi và nhận ảnh của 0.4.4. Chưa xác nhận trên tài khoản Gemini thực. Không thay SceneForge."
+            gh release create gemini-tao-anh-references-v0.4.6 try-on-installer/Gemini-Tao-Anh-References-Setup.exe --target "$env:GITHUB_SHA" --title "Gemini Tạo Ảnh 0.4.6 — chẩn đoán timeout" --notes "Hiển thị bước lỗi và thêm nút Xem lỗi Gemini để mở ảnh chụp tại thời điểm lỗi. Không tự gửi lại. Chưa xác nhận đã sửa nguyên nhân tạo ảnh trên tài khoản thực. Không thay SceneForge."
           }
           exit $LASTEXITCODE

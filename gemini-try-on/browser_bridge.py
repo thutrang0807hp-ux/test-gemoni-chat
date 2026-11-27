@@ -110,6 +110,12 @@ class GeminiWorkspace:
 
     def request(self, action, **values):
         runtime = runtime_directory()
+        if action != "shutdown":
+            diagnostics = self.folder / "diagnostics"
+            diagnostics.mkdir(exist_ok=True)
+            if action in ("image", "prompt"):
+                (diagnostics / "last-error.png").unlink(missing_ok=True)
+            values["diagnostics"] = str(diagnostics)
         exe = runtime / "node.exe"
         command = str(exe) if exe.is_file() else "node"
         try:
@@ -121,7 +127,12 @@ class GeminiWorkspace:
             )
             response = json.loads(completed.stdout)
         except subprocess.TimeoutExpired as error:
-            raise WorkspaceError("Đã hết thời gian chờ Gemini.") from error
+            stage = "không rõ bước"
+            try:
+                stage = json.loads((self.folder / "diagnostics" / "status.json").read_text())["stage"]
+            except (OSError, ValueError, KeyError):
+                pass
+            raise WorkspaceError(f"Hết thời gian chờ. Bước cuối: {stage}. Không tự gửi lại.") from error
         except (OSError, ValueError) as error:
             raise WorkspaceError("Không chạy được bộ kết nối Gemini.") from error
         if response.get("error") or completed.returncode != 0:

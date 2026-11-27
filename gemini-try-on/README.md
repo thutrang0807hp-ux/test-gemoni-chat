@@ -1,3 +1,13 @@
+# 0.4.6 — xác định lỗi hết thời gian chờ
+
+Bản này bổ sung chẩn đoán, chưa khẳng định đã sửa nguyên nhân tạo ảnh trên tài khoản thực.
+
+- Lỗi hiển thị bước cụ thể: mở Gemini, tìm ô nhập, tải ảnh tham chiếu, gửi prompt, chờ ảnh hoặc tải kết quả.
+- Khi lỗi xảy ra, app chụp trang Gemini trước khi dọn tab. Bấm **Xem lỗi Gemini** để mở ảnh trên máy.
+- Trạng thái cuối được lưu tại `%LOCALAPPDATA%\GeminiReferencesTest\diagnostics\status.json`; ảnh lỗi tại `last-error.png` cùng thư mục. Không gửi các tệp này lên mạng tự động.
+- Nếu cả tiến trình vượt thời gian chờ, thông báo vẫn giữ bước cuối thay vì chỉ ghi timeout.
+- Các hàm gửi, nhận và tải ảnh giữ nguyên. Không tự gửi lại lượt tạo ảnh.
+
 # Bản thử 0.4.5 — ảnh tham chiếu
 
 Bản thử độc lập trên nhánh `reference-attachments`. Không sửa SceneForge và không thay release 0.4.4. Cài vào thư mục riêng, dùng hồ sơ riêng; cần đăng nhập một lần trong bản thử.
